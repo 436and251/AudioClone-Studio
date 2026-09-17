@@ -1,11 +1,14 @@
-import hashlib
 import json
 from pathlib import Path
 import uuid
 
 import pytest
 
-from tts_builder.training_modules.models import FrameworkDescriptor, ModuleDescriptor
+from tts_builder.training_modules.models import (
+    FrameworkDescriptor,
+    ModuleDescriptor,
+    TrainingDataDescriptor,
+)
 
 
 def _descriptors():
@@ -13,9 +16,10 @@ def _descriptors():
         id="v2ProPlus",
         display_name="GPT-SoVITS v2ProPlus",
         capabilities=("preprocess", "train", "evaluate"),
+        training_data=TrainingDataDescriptor("file", (".list",)),
         fields=(),
     )
-    return ModuleDescriptor(1, "gpt-sovits-v2proplus", "1.0.0", (framework,)), framework
+    return ModuleDescriptor(2, "gpt-sovits-v2proplus", "1.0.0", (framework,)), framework
 
 
 def _project(tmp_path: Path):
@@ -54,15 +58,19 @@ def test_build_job_writes_exact_atomic_voice_pipeline_contract(tmp_path):
     payload = json.loads(path.read_text(encoding="utf-8"))
 
     assert set(payload) == {
-        "protocol_version", "job_id", "project_name", "project_root",
-        "output_root", "dataset_list", "dataset_sha256", "framework",
+        "protocol_version", "job_id", "module_id", "project_name", "project_root",
+        "output_root", "training_data", "framework",
         "stages", "device", "precision", "parameters", "reference", "job_dir",
     }
+    assert payload["protocol_version"] == 2
+    assert payload["module_id"] == "gpt-sovits-v2proplus"
     assert path == project.resolve() / "jobs" / payload["job_id"] / "job.json"
     assert payload["project_root"] == str(project.resolve())
     assert payload["output_root"] == str((project / "runs").resolve())
-    assert payload["dataset_list"] == str(dataset.resolve())
-    assert payload["dataset_sha256"] == hashlib.sha256(dataset.read_bytes()).hexdigest()
+    assert payload["training_data"] == {
+        "path": str(dataset.resolve()),
+        "kind": "file",
+    }
     assert payload["framework"] == "v2ProPlus"
     assert payload["stages"] == ["preprocess", "s2", "s1", "evaluate"]
     assert payload["parameters"] == {"s2.batch_size": 2}
@@ -90,8 +98,11 @@ def test_build_job_refuses_to_overwrite_existing_uuid_directory(tmp_path, monkey
     assert json.loads(first.read_text(encoding="utf-8"))["job_id"] == str(fixed)
 
 
-@pytest.mark.parametrize("escaped", ["dataset", "output"])
-def test_build_job_rejects_paths_outside_project(tmp_path, escaped):
+@pytest.mark.parametrize(
+    ("escaped", "message"),
+    [("dataset", "training data"), ("output", "output")],
+)
+def test_build_job_rejects_paths_outside_project(tmp_path, escaped, message):
     from tts_builder.training_modules.job import build_job
 
     project, dataset = _project(tmp_path)
@@ -105,7 +116,7 @@ def test_build_job_rejects_paths_outside_project(tmp_path, escaped):
     else:
         values["output_root"] = outside / "runs"
 
-    with pytest.raises(ValueError, match=escaped):
+    with pytest.raises(ValueError, match=message):
         build_job(project, module, framework, values, ("preprocess",), dataset)
 
 
@@ -122,5 +133,51 @@ def test_build_job_rejects_dataset_symlink_escape(tmp_path):
         pytest.skip("symlinks are unavailable")
     module, framework = _descriptors()
 
-    with pytest.raises(ValueError, match="dataset"):
+    with pytest.raises(ValueError, match="training data"):
         build_job(project, module, framework, _values(project), ("preprocess",), link)
+
+
+def test_build_job_accepts_directory_training_data(tmp_path):
+    from tts_builder.training_modules.job import build_job
+
+    project, _ = _project(tmp_path)
+    training_data = project / "corpus"
+    training_data.mkdir()
+    framework = FrameworkDescriptor(
+        "directory-framework",
+        "Directory Framework",
+        ("preprocess",),
+        TrainingDataDescriptor("directory", ()),
+        (),
+    )
+    module = ModuleDescriptor(2, "directory-module", "1.0", (framework,))
+
+    path = build_job(
+        project, module, framework, _values(project), ("preprocess",), training_data
+    )
+
+    assert json.loads(path.read_text(encoding="utf-8"))["training_data"] == {
+        "path": str(training_data.resolve()),
+        "kind": "directory",
+    }
+
+
+@pytest.mark.parametrize("name", ["dataset.json", "missing.list"])
+def test_build_job_rejects_wrong_or_missing_file_training_data(tmp_path, name):
+    from tts_builder.training_modules.job import build_job
+
+    project, _ = _project(tmp_path)
+    module, framework = _descriptors()
+    training_data = project / name
+    if training_data.suffix == ".json":
+        training_data.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="training data"):
+        build_job(
+            project,
+            module,
+            framework,
+            _values(project),
+            ("preprocess",),
+            training_data,
+        )

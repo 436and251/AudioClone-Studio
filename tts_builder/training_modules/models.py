@@ -14,10 +14,17 @@ class FieldDescriptor:
 
 
 @dataclass(frozen=True)
+class TrainingDataDescriptor:
+    kind: str
+    extensions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class FrameworkDescriptor:
     id: str
     display_name: str
     capabilities: tuple[str, ...]
+    training_data: TrainingDataDescriptor
     fields: tuple[FieldDescriptor, ...]
 
 

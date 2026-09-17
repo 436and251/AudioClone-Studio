@@ -19,6 +19,7 @@ from tts_builder.training_modules.models import (
     FrameworkDescriptor,
     ModuleDescriptor,
     ProbeResult,
+    TrainingDataDescriptor,
 )
 
 
@@ -45,9 +46,10 @@ def _descriptor():
         id="v2ProPlus",
         display_name="GPT-SoVITS v2ProPlus",
         capabilities=("train",),
+        training_data=TrainingDataDescriptor("file", (".list",)),
         fields=(),
     )
-    return ModuleDescriptor(1, "gpt-sovits-v2proplus", "1.0.0", (framework,))
+    return ModuleDescriptor(2, "gpt-sovits-v2proplus", "1.0.0", (framework,))
 
 
 def _settings(tmp_path, modules=()):

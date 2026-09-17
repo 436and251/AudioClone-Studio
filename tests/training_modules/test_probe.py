@@ -10,7 +10,7 @@ from tts_builder.training_modules.probe import probe_module
 
 def descriptor_payload() -> dict:
     return {
-        "protocol_version": 1,
+        "protocol_version": 2,
         "module_id": "gpt-sovits-v2proplus",
         "module_version": "0.1.0",
         "frameworks": [
@@ -18,6 +18,7 @@ def descriptor_payload() -> dict:
                 "id": "v2ProPlus",
                 "display_name": "GPT-SoVITS v2ProPlus",
                 "capabilities": ["train"],
+                "training_data": {"kind": "file", "extensions": [".list"]},
                 "fields": [],
             }
         ],

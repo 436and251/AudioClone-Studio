@@ -4,14 +4,19 @@ import math
 import operator
 from typing import Callable
 
-from .models import FieldDescriptor, FrameworkDescriptor, ModuleDescriptor
+from .models import (
+    FieldDescriptor,
+    FrameworkDescriptor,
+    ModuleDescriptor,
+    TrainingDataDescriptor,
+)
 
 
 _LOCALES = {"zh_CN", "en", "ja"}
-_CAPABILITIES = {"preprocess", "train", "evaluate", "listen", "promote"}
+_CAPABILITIES = {"preprocess", "train", "evaluate", "listen", "promote", "infer"}
 _KINDS = {"string", "integer", "number", "boolean", "enum", "path"}
 _ROOT_FIELDS = {"protocol_version", "module_id", "module_version", "frameworks"}
-_FRAMEWORK_FIELDS = {"id", "display_name", "capabilities", "fields"}
+_FRAMEWORK_FIELDS = {"id", "display_name", "capabilities", "training_data", "fields"}
 _FIELD_FIELDS = {"key", "kind", "default", "constraints", "labels"}
 _CONSTRAINT_FIELDS = {
     "string": set(),
@@ -60,13 +65,16 @@ _DEFAULT_VALIDATORS: dict[str, Callable[[object], bool]] = {
 
 def parse_descriptor(payload: object) -> ModuleDescriptor:
     root = _object(payload, _ROOT_FIELDS, "descriptor")
-    if type(root["protocol_version"]) is not int or root["protocol_version"] != 1:
-        raise ValueError("protocol_version must be integer 1")
+    protocol_version = root["protocol_version"]
+    if type(protocol_version) is not int or protocol_version != 2:
+        raise ValueError(
+            f"unsupported module protocol version {protocol_version}; expected 2"
+        )
     frameworks = _nonempty_list(root["frameworks"], "frameworks")
     parsed = tuple(_parse_framework(value) for value in frameworks)
     _unique((framework.id for framework in parsed), "framework id")
     return ModuleDescriptor(
-        protocol_version=1,
+        protocol_version=2,
         module_id=_text(root["module_id"], "module_id"),
         module_version=_text(root["module_version"], "module_version"),
         frameworks=parsed,
@@ -87,8 +95,39 @@ def _parse_framework(payload: object) -> FrameworkDescriptor:
         id=_text(value["id"], "framework id"),
         display_name=_text(value["display_name"], "framework display_name"),
         capabilities=capabilities,
+        training_data=_parse_training_data(value["training_data"]),
         fields=fields,
     )
+
+
+def _parse_training_data(payload: object) -> TrainingDataDescriptor:
+    value = _object(
+        payload,
+        {"kind", "extensions"},
+        "training_data",
+        require_all=False,
+    )
+    kind = _text(value.get("kind"), "training_data kind")
+    if kind not in {"file", "directory"}:
+        raise ValueError("unsupported training_data kind")
+    if kind == "directory" and "extensions" in value:
+        raise ValueError("training_data extensions are only valid for files")
+    extensions = value.get("extensions", [])
+    if not isinstance(extensions, list) or any(
+        not isinstance(extension, str)
+        or len(extension) < 2
+        or not extension.startswith(".")
+        or extension != extension.strip()
+        or "/" in extension
+        or "\\" in extension
+        or not all(character.isalnum() or character in "_-" for character in extension[1:])
+        for extension in extensions
+    ):
+        raise ValueError("training_data extension must start with a dot")
+    normalized = tuple(extension.casefold() for extension in extensions)
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("duplicate training_data extension")
+    return TrainingDataDescriptor(kind=kind, extensions=tuple(extensions))
 
 
 def _parse_field(payload: object) -> FieldDescriptor:

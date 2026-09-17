@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -21,14 +20,14 @@ def build_job(
     framework: FrameworkDescriptor,
     values: Mapping[str, object],
     stages: Sequence[str],
-    dataset_list: Path,
+    training_data: Path,
 ) -> Path:
     project_root = _existing_directory(project_dir, "project")
-    dataset = _contained_file(dataset_list, project_root, "dataset")
-    if module.protocol_version != 1:
+    if module.protocol_version != 2:
         raise ValueError("unsupported module protocol")
-    if framework.id not in {item.id for item in module.frameworks}:
+    if framework not in module.frameworks:
         raise ValueError("framework does not belong to module")
+    training_path = _training_data(training_data, framework, project_root)
     if set(values) != _VALUE_KEYS:
         raise ValueError("job values must contain exactly the supported fields")
 
@@ -43,13 +42,16 @@ def build_job(
     job_path = job_dir / "job.json"
     temporary = job_dir / ".job.json.tmp"
     payload = {
-        "protocol_version": 1,
+        "protocol_version": 2,
         "job_id": job_id,
+        "module_id": module.module_id,
         "project_name": values["project_name"],
         "project_root": str(project_root),
         "output_root": str(output_root),
-        "dataset_list": str(dataset),
-        "dataset_sha256": _sha256(dataset),
+        "training_data": {
+            "path": str(training_path),
+            "kind": framework.training_data.kind,
+        },
         "framework": framework.id,
         "stages": list(selected),
         "device": values["device"],
@@ -100,6 +102,25 @@ def _contained_file(path: Path, root: Path, name: str) -> Path:
     return resolved
 
 
+def _training_data(
+    path: Path,
+    framework: FrameworkDescriptor,
+    root: Path,
+) -> Path:
+    resolved = _contained_path(path, root, "training data")
+    descriptor = framework.training_data
+    if descriptor.kind == "directory":
+        if not resolved.is_dir():
+            raise ValueError("training data must be an existing directory")
+        return resolved
+    if not resolved.is_file():
+        raise ValueError("training data must be an existing file")
+    extensions = {extension.casefold() for extension in descriptor.extensions}
+    if extensions and resolved.suffix.casefold() not in extensions:
+        raise ValueError("training data has an unsupported extension")
+    return resolved
+
+
 def _reference(value: object, root: Path) -> object:
     if value is None:
         return None
@@ -110,11 +131,3 @@ def _reference(value: object, root: Path) -> object:
         "text": value["text"],
         "language": value["language"],
     }
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()

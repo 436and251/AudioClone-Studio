@@ -149,7 +149,7 @@ class TrainingPage(QWidget):
                 framework,
                 self.form.values(),
                 self.form.selected_stages(),
-                Path(self.form.dataset_edit.text()).resolve(),
+                self.form.training_data_path(),
             )
             process = self._process_factory(setting)
             self.attach_process(process)

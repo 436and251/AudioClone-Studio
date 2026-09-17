@@ -138,6 +138,9 @@ class TrainingForm(QWidget):
     def selected_stages(self) -> tuple[str, ...]:
         return tuple(stage for stage in _STAGES if self.stage_boxes[stage].isChecked())
 
+    def training_data_path(self) -> Path:
+        return Path(self.dataset_edit.text()).resolve()
+
     def values(self) -> dict[str, object]:
         reference = None
         if self.stage_boxes["evaluate"].isChecked():
@@ -161,16 +164,16 @@ class TrainingForm(QWidget):
     def is_valid(self) -> bool:
         if not self.bindings or self.framework_combo.currentIndex() < 0:
             return False
-        setting, _, _ = self.selection()
+        setting, _, framework = self.selection()
         project = Path(self.project_edit.text())
-        dataset = Path(self.dataset_edit.text())
+        training_data = Path(self.dataset_edit.text())
         output = Path(self.output_edit.text())
         if (
             setting is None
             or _PROJECT_NAME.fullmatch(self.project_name.text().strip()) is None
             or not project.is_absolute()
             or not project.is_dir()
-            or not _contained_file(dataset, project)
+            or not _valid_training_data(training_data, project, framework)
             or not _contained_path(output, project)
             or not self.selected_stages()
         ):
@@ -265,9 +268,17 @@ class TrainingForm(QWidget):
             edit.setText(path)
 
     def _browse_dataset(self):
-        path, _ = QFileDialog.getOpenFileName(self, "", self.dataset_edit.text(), "dataset.list (*.list);;All files (*)")
+        _, _, framework = self.selection()
+        if framework.training_data.kind == "directory":
+            path = QFileDialog.getExistingDirectory(self, "", self.dataset_edit.text())
+        else:
+            patterns = " ".join(f"*{extension}" for extension in framework.training_data.extensions)
+            file_filter = f"Training data ({patterns});;All files (*)" if patterns else "All files (*)"
+            path, _ = QFileDialog.getOpenFileName(
+                self, "", self.dataset_edit.text(), file_filter
+            )
         if path:
-            self.prefill_dataset(Path(path))
+            self.dataset_edit.setText(str(Path(path).resolve()))
 
     def _browse_reference(self):
         path, _ = QFileDialog.getOpenFileName(self, "", self.reference_audio.text(), "WAV (*.wav);;All files (*)")
@@ -343,3 +354,20 @@ def _contained_path(path: Path, root: Path) -> bool:
 
 def _contained_file(path: Path, root: Path) -> bool:
     return _contained_path(path, root) and path.resolve().is_file()
+
+
+def _valid_training_data(
+    path: Path,
+    root: Path,
+    framework: FrameworkDescriptor,
+) -> bool:
+    if not _contained_path(path, root):
+        return False
+    descriptor = framework.training_data
+    resolved = path.resolve()
+    if descriptor.kind == "directory":
+        return resolved.is_dir()
+    extensions = {extension.casefold() for extension in descriptor.extensions}
+    return resolved.is_file() and (
+        not extensions or resolved.suffix.casefold() in extensions
+    )

@@ -16,7 +16,12 @@ from PySide6.QtWidgets import QMessageBox
 from tts_builder.gui.app import create_application
 from tts_builder.gui.i18n import LocaleController
 from tts_builder.gui.settings import AppSettings, TrainingModuleSetting
-from tts_builder.training_modules.models import FrameworkDescriptor, ModuleDescriptor, ModuleEvent
+from tts_builder.training_modules.models import (
+    FrameworkDescriptor,
+    ModuleDescriptor,
+    ModuleEvent,
+    TrainingDataDescriptor,
+)
 
 
 class FakeModuleProcess(QObject):
@@ -68,9 +73,10 @@ def _binding(tmp_path: Path):
     setting = TrainingModuleSetting("GPT-SoVITS", module_root, python, "voice_pipeline")
     framework = FrameworkDescriptor(
         "v2ProPlus", "GPT-SoVITS v2ProPlus",
-        ("preprocess", "train", "evaluate", "listen", "promote"), (),
+        ("preprocess", "train", "evaluate", "listen", "promote", "infer"),
+        TrainingDataDescriptor("file", (".list",)), (),
     )
-    return setting, ModuleDescriptor(1, "gpt-sovits", "1.0", (framework,))
+    return setting, ModuleDescriptor(2, "gpt-sovits", "1.0", (framework,))
 
 
 def _project(tmp_path: Path):

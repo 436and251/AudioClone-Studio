@@ -88,11 +88,18 @@ def test_module_editor_browses_project_and_python_separately(tmp_path, monkeypat
 
 def test_check_connection_performs_descriptor_probe_only(tmp_path):
     from tts_builder.gui.module_settings import ModuleSettings
+    from tts_builder.training_modules.models import TrainingDataDescriptor
 
     app = create_application([])
     setting = _setting(tmp_path)
-    framework = FrameworkDescriptor("v2ProPlus", "GPT-SoVITS v2ProPlus", ("train",), ())
-    descriptor = ModuleDescriptor(1, "gpt-sovits-v2proplus", "1.0.0", (framework,))
+    framework = FrameworkDescriptor(
+        "v2ProPlus",
+        "GPT-SoVITS v2ProPlus",
+        ("train",),
+        TrainingDataDescriptor("file", (".list",)),
+        (),
+    )
+    descriptor = ModuleDescriptor(2, "gpt-sovits-v2proplus", "1.0.0", (framework,))
     calls = []
 
     def probe(value):

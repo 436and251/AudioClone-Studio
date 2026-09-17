@@ -24,6 +24,8 @@ def test_real_voice_pipeline_descriptor_handshake():
 
     assert result.available, result.error
     assert result.descriptor is not None
-    assert result.descriptor.protocol_version == 1
+    assert result.descriptor.protocol_version == 2
     assert result.descriptor.module_id
     assert result.descriptor.frameworks
+    assert result.descriptor.frameworks[0].training_data.kind == "file"
+    assert result.descriptor.frameworks[0].training_data.extensions == (".list",)

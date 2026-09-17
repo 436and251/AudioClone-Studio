@@ -14,6 +14,7 @@ from tts_builder.training_modules.models import (
     FieldDescriptor,
     FrameworkDescriptor,
     ModuleDescriptor,
+    TrainingDataDescriptor,
 )
 
 
@@ -35,9 +36,10 @@ def _binding(tmp_path: Path):
     )
     framework = FrameworkDescriptor(
         "v2ProPlus", "GPT-SoVITS v2ProPlus",
-        ("preprocess", "train", "evaluate", "listen", "promote"), fields,
+        ("preprocess", "train", "evaluate", "listen", "promote", "infer"),
+        TrainingDataDescriptor("file", (".list",)), fields,
     )
-    return setting, ModuleDescriptor(1, "gpt-sovits", "1.0", (framework,))
+    return setting, ModuleDescriptor(2, "gpt-sovits", "1.0", (framework,))
 
 
 def _project(tmp_path: Path):
@@ -93,3 +95,61 @@ def test_prefill_uses_existing_dataset_without_copying_it(tmp_path):
     assert Path(form.project_edit.text()) == project.resolve()
     assert Path(form.output_edit.text()) == (project / "runs").resolve()
     assert form.project_name.text() == "Acane"
+
+
+@pytest.mark.parametrize(
+    ("locale", "label"),
+    [("zh_CN", "训练数据"), ("en", "Training data"), ("ja", "トレーニングデータ")],
+)
+def test_training_data_label_is_localized(tmp_path, locale, label):
+    from tts_builder.gui.training_form import TrainingForm
+
+    create_application([])
+    form = TrainingForm((_binding(tmp_path),), Translator(locale))
+
+    assert form.dataset_label.text() == label
+
+
+def test_training_data_browse_and_validation_follow_descriptor(tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+    from tts_builder.gui.training_form import TrainingForm
+
+    create_application([])
+    file_binding = _binding(tmp_path)
+    directory = tmp_path / "directory-data"
+    directory.mkdir()
+    file_dataset = _project(tmp_path)[1]
+    directory_framework = FrameworkDescriptor(
+        "directory-framework",
+        "Directory Framework",
+        ("preprocess",),
+        TrainingDataDescriptor("directory", ()),
+        (),
+    )
+    directory_module = ModuleDescriptor(
+        2, "directory-module", "1.0", (directory_framework,)
+    )
+    calls = []
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *args: (calls.append("file") or str(file_dataset), ""),
+    )
+    monkeypatch.setattr(
+        QFileDialog,
+        "getExistingDirectory",
+        lambda *args: calls.append("directory") or str(directory),
+    )
+    form = TrainingForm(
+        (file_binding, (file_binding[0], directory_module)), Translator("en")
+    )
+
+    form._browse_dataset()
+    assert calls == ["file"]
+    assert form.training_data_path().suffix == ".list"
+
+    form.framework_combo.setCurrentIndex(1)
+    form.project_edit.setText(str(tmp_path.resolve()))
+    form._browse_dataset()
+    assert calls == ["file", "directory"]
+    assert form.training_data_path() == directory.resolve()
