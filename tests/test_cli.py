@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 from tts_builder.cli import build_parser
 
 
@@ -29,5 +32,11 @@ def test_cli_supports_fresh_rebuild_flag():
 
 
 def test_cli_does_not_import_pyside6():
-    import sys
-    assert not any(name == "PySide6" or name.startswith("PySide6.") for name in sys.modules)
+    code = (
+        "import sys; import tts_builder.cli; "
+        "print(any(name == 'PySide6' or name.startswith('PySide6.') for name in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "False"
