@@ -49,7 +49,8 @@ class EventStore:
         errors: list[str] = []
         with self.journal.open("rb") as stream:
             stream.seek(self.offset)
-            while chunk := stream.read(_READ_BYTES):
+            chunk = stream.read(_READ_BYTES)
+            if chunk:
                 self.offset += len(chunk)
                 self._consume(chunk, events, errors)
         return EventBatch(tuple(events), tuple(errors))

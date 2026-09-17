@@ -89,6 +89,7 @@ def test_start_uses_explicit_interpreter_safe_paths_and_isolated_environment(
         assert "start_new_session" not in options
     else:
         assert options["start_new_session"] is True
+    assert controller._timer.interval() == 250
     controller.detach()
 
 
@@ -181,3 +182,28 @@ def test_poll_emits_journal_stderr_and_completion(tmp_path: Path):
     assert [event.type for event in events] == ["job_completed"]
     assert "".join(diagnostics) == "训练完成\n"
     assert completed == [0]
+
+
+def test_poll_bounds_stderr_work_and_reports_protocol_errors(tmp_path: Path):
+    from tts_builder.training_modules.process import ModuleProcessController
+
+    create_application([])
+    setting = _setting(tmp_path)
+    job = _job(tmp_path)
+    process = FakeProcess()
+    controller = ModuleProcessController(
+        setting, popen=lambda *_args, **_kwargs: process
+    )
+    diagnostics, failures = [], []
+    controller.stderr_received.connect(diagnostics.append)
+    controller.protocol_failed.connect(failures.append)
+    controller.start(job)
+    with (job.parent / "module.stderr.log").open("ab") as stream:
+        stream.write(b"x" * (70 * 1024))
+    (job.parent / "events.jsonl").write_text("not-json\n", encoding="utf-8")
+
+    controller._poll()
+
+    assert len("".join(diagnostics)) == 64 * 1024
+    assert len(failures) == 1
+    controller.detach()

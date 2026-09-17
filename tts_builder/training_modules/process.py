@@ -44,7 +44,7 @@ class ModuleProcessController(QObject):
         self._stderr_offset = 0
         self._stop_requested_at: float | None = None
         self._timer = QTimer(self)
-        self._timer.setInterval(100)
+        self._timer.setInterval(250)
         self._timer.timeout.connect(self._poll)
 
     def start(self, job_path: Path) -> None:
@@ -147,7 +147,8 @@ class ModuleProcessController(QObject):
         if self._stderr_path is not None and self._stderr_path.exists():
             with self._stderr_path.open("rb") as stream:
                 stream.seek(self._stderr_offset)
-                while chunk := stream.read(64 * 1024):
+                chunk = stream.read(64 * 1024)
+                if chunk:
                     self._stderr_offset += len(chunk)
                     self.stderr_received.emit(chunk.decode("utf-8", errors="replace"))
 

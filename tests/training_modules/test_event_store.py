@@ -59,12 +59,17 @@ def test_event_store_isolates_malformed_and_oversized_lines(tmp_path: Path):
         + _line(_event(type="job_completed", stage=None))
     )
 
-    batch = EventStore(journal, tmp_path, expected_job_id="job-1").read_new()
+    store = EventStore(journal, tmp_path, expected_job_id="job-1")
+    events, errors = [], []
+    while store.offset < journal.stat().st_size:
+        batch = store.read_new()
+        events.extend(batch.events)
+        errors.extend(batch.errors)
 
-    assert [event.type for event in batch.events] == ["job_completed"]
-    assert len(batch.errors) == 2
-    assert any("JSON" in error for error in batch.errors)
-    assert any("maximum" in error for error in batch.errors)
+    assert [event.type for event in events] == ["job_completed"]
+    assert len(errors) == 2
+    assert any("JSON" in error for error in errors)
+    assert any("maximum" in error for error in errors)
 
 
 def test_event_store_rejects_invalid_schema_and_escaped_artifacts(tmp_path: Path):
@@ -89,3 +94,21 @@ def test_event_store_rejects_invalid_schema_and_escaped_artifacts(tmp_path: Path
 
     assert [event.type for event in batch.events] == ["job_completed"]
     assert len(batch.errors) == 2
+
+
+def test_event_store_bounds_bytes_processed_per_poll(tmp_path: Path, monkeypatch):
+    import tts_builder.training_modules.event_store as event_store
+
+    monkeypatch.setattr(event_store, "_READ_BYTES", 128)
+    journal = tmp_path / "events.jsonl"
+    journal.write_bytes(b"".join(_line(_event(current=index)) for index in range(10)))
+    store = event_store.EventStore(journal, tmp_path, expected_job_id="job-1")
+
+    first = store.read_new()
+
+    assert store.offset == 128
+    assert first.events == ()
+    events = []
+    while store.offset < journal.stat().st_size:
+        events.extend(store.read_new().events)
+    assert len(events) == 10
