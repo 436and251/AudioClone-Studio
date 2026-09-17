@@ -50,8 +50,13 @@ def test_main_window_preserves_original_structure_defaults_and_size(tmp_path):
         output_root=tmp_path / 'out',
     ))
 
-    assert (window.width(), window.height()) == (860, 760)
-    assert (window.minimumWidth(), window.minimumHeight()) == (760, 650)
+    available = app.primaryScreen().availableGeometry()
+    if available.width() >= 860 and available.height() >= 760:
+        assert (window.width(), window.height()) == (860, 760)
+    assert window.width() <= available.width()
+    assert window.height() <= available.height()
+    assert window.minimumWidth() <= available.width()
+    assert window.minimumHeight() <= available.height()
     assert window.title_label.objectName() == 'Title'
     assert window.subtitle_label.objectName() == 'Subtitle'
     assert window.settings_btn.objectName() == 'IconButton'

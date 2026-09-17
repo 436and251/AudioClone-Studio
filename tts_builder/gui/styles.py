@@ -98,6 +98,25 @@ QToolButton#IconButton:pressed {
     background: #1F1F1F;
 }
 
+QLabel#NavigationTitle {
+    color: #B3B3B3;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 0 8px 8px 8px;
+}
+
+QPushButton#NavigationButton {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    border-bottom: 3px solid transparent;
+    padding: 12px 10px;
+    text-align: left;
+}
+
+QPushButton#NavigationButton:hover { background: #1B1B1B; }
+QPushButton#NavigationButton[selected="true"] { border-bottom-color: #1ED760; }
+
 QScrollArea { border: none; }
 """
 

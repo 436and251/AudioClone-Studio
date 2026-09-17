@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 import ctypes
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from PySide6.QtGui import QIcon
@@ -9,8 +11,11 @@ from PySide6.QtWidgets import QApplication, QDialog
 
 from .first_run import FirstRunDialog
 from .main_window import MainWindow
-from .settings import AppSettings, apply_model_environment
+from .settings import AppSettings, TrainingModuleSetting, apply_model_environment
+from .studio_window import StudioWindow
 from .styles import APP_QSS
+from ..training_modules.models import ModuleDescriptor, ProbeResult
+from ..training_modules.probe import probe_module
 
 
 def set_windows_app_id() -> None:
@@ -49,6 +54,28 @@ def create_application(argv=None) -> QApplication:
     return app
 
 
+def discover_available_modules(
+    settings: AppSettings,
+    *,
+    probe: Callable[[TrainingModuleSetting], ProbeResult] = probe_module,
+) -> tuple[ModuleDescriptor, ...]:
+    if not settings.training_modules:
+        return ()
+    with ThreadPoolExecutor(max_workers=min(4, len(settings.training_modules))) as pool:
+        results = tuple(pool.map(probe, settings.training_modules))
+    return tuple(
+        result.descriptor
+        for result in results
+        if result.available and result.descriptor is not None
+    )
+
+
+def choose_window(settings: AppSettings, available_modules: Sequence[ModuleDescriptor]):
+    if available_modules:
+        return StudioWindow(settings, available_modules)
+    return MainWindow(settings)
+
+
 def main(argv=None) -> int:
     app = create_application(argv)
 
@@ -66,7 +93,9 @@ def main(argv=None) -> int:
 
         apply_model_environment(settings.model_root)
 
-    window = MainWindow(settings)
+    modules = discover_available_modules(settings)
+    window = choose_window(settings, modules)
+    app.setApplicationName(window.windowTitle())
 
     icon_path = resource_path("assets/app.ico")
     icon = QIcon(str(icon_path))

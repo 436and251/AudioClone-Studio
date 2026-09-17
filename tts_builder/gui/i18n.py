@@ -79,6 +79,10 @@ CATALOGS = {
         "system.cuda_available": "NVIDIA acceleration available",
         "system.cpu_available": "CPU mode is available but substantially slower",
         "system.unknown_cpu": "Unknown CPU",
+        "nav.workspace": "Workspace",
+        "nav.dataset": "Dataset Mining",
+        "nav.training": "Training",
+        "training.placeholder": "Select a training framework to continue.",
     },
     "zh_CN": {
         "app.title": "语音数据集构建器",
@@ -155,6 +159,10 @@ CATALOGS = {
         "system.cuda_available": "NVIDIA 加速可用",
         "system.cpu_available": "CPU 模式可用，但速度会明显更慢",
         "system.unknown_cpu": "未知 CPU",
+        "nav.workspace": "工作区",
+        "nav.dataset": "素材挖掘",
+        "nav.training": "训练",
+        "training.placeholder": "请选择训练框架以继续。",
     },
     "ja": {
         "app.title": "音声データセット作成ツール",
@@ -231,6 +239,10 @@ CATALOGS = {
         "system.cuda_available": "NVIDIA アクセラレーションを利用できます",
         "system.cpu_available": "CPU モードを利用できますが、大幅に低速です",
         "system.unknown_cpu": "不明な CPU",
+        "nav.workspace": "ワークスペース",
+        "nav.dataset": "素材マイニング",
+        "nav.training": "トレーニング",
+        "training.placeholder": "トレーニングフレームワークを選択してください。",
     },
 }
 

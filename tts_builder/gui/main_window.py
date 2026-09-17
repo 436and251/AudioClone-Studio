@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QMainWindow
+from PySide6.QtWidgets import QApplication, QMainWindow, QScrollArea
 
 from .controller import TaskController
 from .dataset_page import DatasetPage
@@ -24,9 +24,11 @@ class MainWindow(QMainWindow):
         self.dataset_page = DatasetPage(
             settings, controller, self, locale_controller=locale_controller
         )
-        self.setCentralWidget(self.dataset_page)
-        self.resize(860, 760)
-        self.setMinimumSize(760, 650)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.dataset_page)
+        self.setCentralWidget(scroll)
+        self._fit_to_screen()
         self.locale_controller.locale_changed.connect(self._locale_changed)
         self._locale_changed(self.locale_controller.locale)
         for name in _COMPAT_WIDGETS:
@@ -53,3 +55,10 @@ class MainWindow(QMainWindow):
 
     def _set_status(self, key: str, **values: object) -> None:
         self.dataset_page._set_status(key, **values)
+
+    def _fit_to_screen(self) -> None:
+        available = QApplication.primaryScreen().availableGeometry()
+        self.setMinimumSize(min(760, available.width()), min(650, available.height()))
+        width = min(860, max(640, int(available.width() * 0.95)), available.width())
+        height = min(760, max(560, int(available.height() * 0.95)), available.height())
+        self.resize(width, height)
