@@ -10,9 +10,11 @@ from PySide6.QtWidgets import (
 )
 
 from ..training_modules.job import build_job as default_build_job
+from ..training_modules.artifacts import load_listening_manifest
 from ..training_modules.models import ModuleEvent
 from ..training_modules.process import ModuleProcessController
 from .i18n import LocaleController, Translator
+from .candidate_page import CandidatePage
 from .styles import FAILED, MUTED
 from .training_form import ModuleBinding, TrainingForm
 from .training_progress import TrainingProgress
@@ -36,6 +38,7 @@ class TrainingPage(QWidget):
         self._process_factory = process_factory
         self.process = None
         self.job_path: Path | None = None
+        self._operation = "run"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 24, 30, 24)
@@ -46,8 +49,10 @@ class TrainingPage(QWidget):
 
         self.tabs = QTabWidget()
         self._tab_capabilities = self._capability_tabs()
+        self.candidate_page = CandidatePage(locale_controller)
         for capability in self._tab_capabilities:
-            self.tabs.addTab(QWidget(), "")
+            page = self.candidate_page if capability == "listen" else QWidget()
+            self.tabs.addTab(page, "")
         layout.addWidget(self.tabs)
 
         form_card = QFrame()
@@ -93,6 +98,7 @@ class TrainingPage(QWidget):
         self.form.validity_changed.connect(self._update_actions)
         self.start_button.clicked.connect(self._start)
         self.stop_button.clicked.connect(self._stop)
+        self.candidate_page.promotion_requested.connect(self._promote)
         locale_controller.locale_changed.connect(self._locale_changed)
         self.retranslate_ui(self.translator)
         self._set_running(False)
@@ -147,6 +153,7 @@ class TrainingPage(QWidget):
             )
             process = self._process_factory(setting)
             self.attach_process(process)
+            self._operation = "run"
             self.error_summary.hide()
             self._set_running(True)
             process.start(self.job_path)
@@ -168,6 +175,9 @@ class TrainingPage(QWidget):
             self._show_error(message or event.type)
         elif event.type == "job_cancelled":
             self.status.setText(self.translator.text("status.stopped"))
+        for artifact in event.artifacts:
+            if artifact.get("type") == "listening_manifest":
+                self._load_candidates(Path(str(artifact.get("path"))))
 
     def _stderr(self, text: str) -> None:
         for line in text.splitlines():
@@ -181,11 +191,13 @@ class TrainingPage(QWidget):
     def _completed(self, returncode: int) -> None:
         self._set_running(False)
         if returncode == 0:
-            self.status.setText(self.translator.text("training.completed"))
+            key = "training.promoted" if self._operation == "promote" else "training.completed"
+            self.status.setText(self.translator.text(key))
         else:
             self._show_error(
                 self.translator.text("training.process_failed", returncode=returncode)
             )
+        self._operation = "run"
 
     def _show_error(self, message: str) -> None:
         self.error_summary.setText(message)
@@ -200,12 +212,35 @@ class TrainingPage(QWidget):
         self.form.setEnabled(not running)
         self.stop_button.setEnabled(running)
         self.start_button.setEnabled(not running and self.form.is_valid())
+        self.candidate_page.set_busy(running)
 
     def _update_actions(self, *_):
         self.start_button.setEnabled(self.form.isEnabled() and self.form.is_valid())
 
     def _locale_changed(self, locale: str) -> None:
         self.retranslate_ui(Translator(locale))
+
+    def _load_candidates(self, manifest: Path) -> None:
+        try:
+            candidates = load_listening_manifest(manifest, manifest.resolve().parent)
+            self.candidate_page.set_candidates(candidates)
+            self.tabs.setCurrentIndex(self._tab_capabilities.index("listen"))
+        except (OSError, ValueError) as error:
+            self._protocol_failed(str(error))
+
+    def _promote(self, selection: str) -> None:
+        if self.process is None or self.job_path is None:
+            self._show_error(self.translator.text("training.promotion_unavailable"))
+            return
+        try:
+            self._operation = "promote"
+            self._set_running(True)
+            self.status.setText(self.translator.text("training.promoting"))
+            self.process.promote(self.job_path, selection)
+        except Exception as error:
+            self._operation = "run"
+            self._set_running(False)
+            self._show_error(str(error))
 
 
 def _event_text(event: ModuleEvent) -> str:

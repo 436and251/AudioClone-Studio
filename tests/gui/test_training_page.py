@@ -1,4 +1,6 @@
 import os
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,6 +11,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtWidgets import QMessageBox
 
 from tts_builder.gui.app import create_application
 from tts_builder.gui.i18n import LocaleController
@@ -26,12 +29,16 @@ class FakeModuleProcess(QObject):
         super().__init__()
         self.started = []
         self.stopped = False
+        self.promoted = []
 
     def start(self, path):
         self.started.append(path)
 
     def request_stop(self):
         self.stopped = True
+
+    def promote(self, job, selection):
+        self.promoted.append((job, selection))
 
 
 class FakeDatasetController(QObject):
@@ -72,6 +79,28 @@ def _project(tmp_path: Path):
     project.mkdir()
     dataset.write_text("clip.wav|Acane|ja|test\n", encoding="utf-8")
     return project, dataset
+
+
+def _listening_manifest(root: Path):
+    entries = []
+    for letter in "ABC":
+        samples = []
+        for language in ("zh", "ja", "en"):
+            wav = root / f"candidate_{letter}" / f"{language}.wav"
+            wav.parent.mkdir(parents=True, exist_ok=True)
+            wav.write_bytes(f"{letter}-{language}".encode())
+            samples.append({
+                "language": language,
+                "text": f"{language} sample",
+                "wav": f"candidate_{letter}/{language}.wav",
+                "sha256": hashlib.sha256(wav.read_bytes()).hexdigest(),
+            })
+        entries.append({"candidate": f"candidate_{letter}", "samples": samples})
+    manifest = root / "manifest.json"
+    manifest.write_text(
+        json.dumps({"schema_version": 1, "candidates": entries}), encoding="utf-8"
+    )
+    return manifest
 
 
 def test_training_page_builds_job_and_starts_selected_module(tmp_path):
@@ -175,3 +204,41 @@ def test_dataset_completion_offers_explicit_continue_and_prefills_training(tmp_p
     assert window.pages.currentIndex() == 1
     assert Path(window.training_page.form.dataset_edit.text()) == dataset.resolve()
     window.close()
+
+
+def test_listening_artifact_enables_human_promotion_and_failure_keeps_candidates(
+    tmp_path, monkeypatch
+):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    process = FakeModuleProcess()
+    page = TrainingPage(
+        (_binding(tmp_path),), LocaleController("en"),
+        process_factory=lambda _setting: process,
+    )
+    page.attach_process(process)
+    job = tmp_path / "job.json"
+    job.write_text("{}", encoding="utf-8")
+    page.job_path = job
+    manifest = _listening_manifest(tmp_path / "listening")
+    process.event_received.emit(ModuleEvent(
+        1,
+        "job",
+        "artifact",
+        "now",
+        artifacts=({"type": "listening_manifest", "path": str(manifest)},),
+    ))
+    app.processEvents()
+    assert len(page.candidate_page.cards) == 3
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args, **_kwargs: QMessageBox.Yes)
+    page.candidate_page.cards[0].select.click()
+    page.candidate_page.promote_button.click()
+    assert process.promoted == [(job, "candidate_A")]
+    process.completed.emit(2)
+    app.processEvents()
+
+    assert len(page.candidate_page.cards) == 3
+    assert page.error_summary.isVisibleTo(page)
+    page.close()
