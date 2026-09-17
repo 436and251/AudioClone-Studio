@@ -25,7 +25,7 @@ def separate_vocals(input_path: Path, output_root: Path, model: str = "htdemucs"
                      device: str = "auto", segment_seconds: float = 7.0, *,
                      event_sink: EventSink | None = None,
                      cancel_token: CancellationToken | None = None) -> Path:
-    """Run Demucs through its Python entry point so frozen GUI builds remain usable."""
+    """Run Demucs through its Python entry point in the active source environment."""
     if importlib.util.find_spec("demucs") is None:
         raise RuntimeError("Demucs is required: pip install demucs")
     run_demucs(input_path, output_root, model, device, segment_seconds, event_sink, cancel_token)

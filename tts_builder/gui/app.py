@@ -29,14 +29,7 @@ def set_windows_app_id() -> None:
 
 
 def resource_path(relative_path: str) -> Path:
-    if getattr(sys, "frozen", False):
-        base_dir = Path(sys._MEIPASS)
-    else:
-        # app.py 位于 tts_builder/gui/app.py
-        # parents[2] 回到项目根目录
-        base_dir = Path(__file__).resolve().parents[2]
-
-    return base_dir / relative_path
+    return Path(__file__).resolve().parents[2] / relative_path
 
 
 def create_application(argv=None) -> QApplication:

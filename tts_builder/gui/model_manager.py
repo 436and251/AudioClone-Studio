@@ -122,7 +122,7 @@ def friendly_download_error(exc: Exception) -> tuple[str, str]:
             "The model download could not finish. Downloaded cache data is preserved; Retry will resume when possible.",
         )
     if "ffmpeg" in low and "not found" in low:
-        return "FFmpeg not found", "FFmpeg is required for audio preparation. Reinstall the app package or configure FFmpeg, then retry."
+        return "FFmpeg not found", "FFmpeg is required for audio preparation. Install FFmpeg and add it to PATH, then retry."
     if "no space" in low or ("disk" in low and "space" in low):
         return "Not enough storage", "Free some disk space or choose another model storage location, then retry."
     return "Model preparation failed", text or exc.__class__.__name__
