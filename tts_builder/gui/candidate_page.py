@@ -58,6 +58,10 @@ class CandidatePage(QWidget):
         self.title = QLabel()
         self.title.setObjectName("Subtitle")
         layout.addWidget(self.title)
+        self.empty_hint = QLabel()
+        self.empty_hint.setObjectName("Subtitle")
+        self.empty_hint.setWordWrap(True)
+        layout.addWidget(self.empty_hint)
         self.cards_layout = QHBoxLayout()
         layout.addLayout(self.cards_layout)
         actions = QHBoxLayout()
@@ -90,6 +94,7 @@ class CandidatePage(QWidget):
             self.cards.append(card)
             self._group.addButton(card.select)
             self.cards_layout.addWidget(card.widget, 1)
+        self.empty_hint.setVisible(not self.candidates)
         self.set_busy(self._busy)
 
     def selected_id(self) -> str | None:
@@ -109,6 +114,7 @@ class CandidatePage(QWidget):
     def retranslate_ui(self, translator: Translator) -> None:
         self.translator = translator
         self.title.setText(translator.text("candidate.title"))
+        self.empty_hint.setText(translator.text("candidate.empty"))
         self.promote_button.setText(translator.text("candidate.promote"))
         for card in self.cards:
             for row in card.rows:

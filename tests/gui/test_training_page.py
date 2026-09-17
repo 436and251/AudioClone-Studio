@@ -144,6 +144,33 @@ def test_training_page_builds_job_and_starts_selected_module(tmp_path):
     page.close()
 
 
+@pytest.mark.parametrize(
+    ("locale", "labels"),
+    [
+        (
+            "en",
+            ["Training configuration", "Candidate listening", "Inference trial"],
+        ),
+        ("zh_CN", ["训练配置", "候选试听", "推理试验"]),
+        ("ja", ["トレーニング設定", "候補試聴", "推論テスト"]),
+    ],
+)
+def test_training_workspace_has_three_fixed_localized_pages(tmp_path, locale, labels):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    page = TrainingPage((_binding(tmp_path),), LocaleController(locale))
+
+    assert [page.tabs.tabText(index) for index in range(page.tabs.count())] == labels
+    assert page.tabs.widget(0) is page.config_page
+    assert page.tabs.widget(1) is page.candidate_page
+    assert page.tabs.widget(2) is page.inference_page
+    assert page.config_page.isAncestorOf(page.form)
+    assert page.config_page.isAncestorOf(page.progress)
+    assert not page.candidate_page.isAncestorOf(page.form)
+    page.close()
+
+
 def test_training_progress_and_errors_are_immediately_visible_and_bounded(tmp_path):
     from tts_builder.gui.training_page import TrainingPage
 
@@ -171,6 +198,7 @@ def test_training_progress_and_errors_are_immediately_visible_and_bounded(tmp_pa
     process.stderr_received.emit("CUDA out of memory")
     app.processEvents()
     assert page.error_summary.isVisibleTo(page)
+    assert page.config_page.isAncestorOf(page.error_summary)
     assert "CUDA OOM" in page.error_summary.text()
     assert "CUDA out of memory" in page.activity.toPlainText()
     assert page.activity.maximumBlockCount() == 500
@@ -246,5 +274,7 @@ def test_listening_artifact_enables_human_promotion_and_failure_keeps_candidates
     app.processEvents()
 
     assert len(page.candidate_page.cards) == 3
+    assert page.tabs.currentIndex() == 0
     assert page.error_summary.isVisibleTo(page)
+    assert page.config_page.isAncestorOf(page.error_summary)
     page.close()

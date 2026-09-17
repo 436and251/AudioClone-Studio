@@ -98,3 +98,27 @@ def test_candidate_selection_is_exclusive_and_confirmation_emits_internal_id(
     assert selected == ["candidate_A"]
     assert len(page.cards) == 3
     page.close()
+
+
+@pytest.mark.parametrize(
+    ("locale", "hint"),
+    [
+        ("en", "No listening candidates yet. Complete evaluation first."),
+        ("zh_CN", "当前还没有试听候选，请先完成自动评测。"),
+        ("ja", "試聴候補はまだありません。先に自動評価を完了してください。"),
+    ],
+)
+def test_candidate_page_shows_localized_empty_state(locale, hint):
+    from tts_builder.gui.candidate_page import CandidatePage
+
+    app = create_application([])
+    page = CandidatePage(LocaleController(locale), player=FakePlayer())
+    page.set_candidates(())
+    page.show()
+    app.processEvents()
+
+    assert page.empty_hint.text() == hint
+    assert page.empty_hint.isVisibleTo(page)
+    assert page.cards == []
+    assert not page.promote_button.isEnabled()
+    page.close()

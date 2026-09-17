@@ -14,6 +14,8 @@ from PySide6.QtWidgets import QScrollArea
 from tts_builder.gui import app as gui_app
 from tts_builder.gui.app import create_application
 from tts_builder.gui.main_window import MainWindow
+from tts_builder.gui.i18n import LocaleController
+from tts_builder.gui.navigation import Navigation
 from tts_builder.gui.settings import AppSettings, TrainingModuleSetting
 from tts_builder.training_modules.models import (
     FrameworkDescriptor,
@@ -204,3 +206,23 @@ def test_standalone_window_also_fits_small_screens_and_scrolls(tmp_path):
     assert len(scroll_areas) == 1
     assert scroll_areas[0].widgetResizable() is True
     window.close()
+
+
+def test_workspace_title_has_stronger_hierarchy_and_hides_in_compact_mode():
+    app = create_application([])
+    navigation = Navigation(LocaleController("en"))
+    navigation.show()
+    app.processEvents()
+
+    assert (
+        navigation.workspace_label.fontMetrics().height()
+        > navigation.buttons[0].fontMetrics().height()
+    )
+    assert (
+        navigation.workspace_label.font().weight()
+        > navigation.buttons[0].font().weight()
+    )
+
+    navigation.set_compact(True)
+    assert navigation.workspace_label.isHidden()
+    navigation.close()

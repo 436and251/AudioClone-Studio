@@ -48,11 +48,16 @@ class TrainingPage(QWidget):
         layout.addWidget(self.title)
 
         self.tabs = QTabWidget()
-        self._tab_capabilities = self._capability_tabs()
+        self._tab_ids = ("config", "candidates", "inference")
+        self.config_page = QWidget()
+        config_layout = QVBoxLayout(self.config_page)
+        config_layout.setContentsMargins(0, 14, 0, 0)
+        config_layout.setSpacing(14)
         self.candidate_page = CandidatePage(locale_controller)
-        for capability in self._tab_capabilities:
-            page = self.candidate_page if capability == "listen" else QWidget()
-            self.tabs.addTab(page, "")
+        self.inference_page = QWidget()
+        self.tabs.addTab(self.config_page, "")
+        self.tabs.addTab(self.candidate_page, "")
+        self.tabs.addTab(self.inference_page, "")
         layout.addWidget(self.tabs)
 
         form_card = QFrame()
@@ -60,7 +65,7 @@ class TrainingPage(QWidget):
         form_layout = QVBoxLayout(form_card)
         self.form = TrainingForm(self.bindings, self.translator)
         form_layout.addWidget(self.form)
-        layout.addWidget(form_card)
+        config_layout.addWidget(form_card)
 
         actions = QHBoxLayout()
         self.status = QLabel()
@@ -72,7 +77,7 @@ class TrainingPage(QWidget):
         actions.addWidget(self.status, 1)
         actions.addWidget(self.stop_button)
         actions.addWidget(self.start_button)
-        layout.addLayout(actions)
+        config_layout.addLayout(actions)
 
         progress_card = QFrame()
         progress_card.setObjectName("Card")
@@ -84,16 +89,16 @@ class TrainingPage(QWidget):
         self.error_summary.hide()
         progress_layout.addWidget(self.progress)
         progress_layout.addWidget(self.error_summary)
-        layout.addWidget(progress_card)
+        config_layout.addWidget(progress_card)
 
         self.activity_label = QLabel()
         self.activity = QPlainTextEdit()
         self.activity.setReadOnly(True)
         self.activity.setMaximumBlockCount(500)
         self.activity.setMaximumHeight(190)
-        layout.addWidget(self.activity_label)
-        layout.addWidget(self.activity)
-        layout.addStretch(1)
+        config_layout.addWidget(self.activity_label)
+        config_layout.addWidget(self.activity)
+        config_layout.addStretch(1)
 
         self.form.validity_changed.connect(self._update_actions)
         self.start_button.clicked.connect(self._start)
@@ -117,23 +122,13 @@ class TrainingPage(QWidget):
     def retranslate_ui(self, translator: Translator) -> None:
         self.translator = translator
         self.title.setText(translator.text("training.title"))
-        for index, capability in enumerate(self._tab_capabilities):
-            self.tabs.setTabText(index, translator.text(f"training.tab.{capability}"))
+        for index, tab_id in enumerate(self._tab_ids):
+            self.tabs.setTabText(index, translator.text(f"training.tab.{tab_id}"))
         self.start_button.setText(translator.text("training.start"))
         self.stop_button.setText(translator.text("actions.stop"))
         self.activity_label.setText(translator.text("logs.activity"))
         self.form.retranslate_ui(translator)
         self.progress.retranslate_ui(translator)
-
-    def _capability_tabs(self) -> tuple[str, ...]:
-        order = ("preprocess", "train", "evaluate", "listen", "promote")
-        available = {
-            capability
-            for _, module in self.bindings
-            for framework in module.frameworks
-            for capability in framework.capabilities
-        }
-        return tuple(capability for capability in order if capability in available)
 
     def _start(self) -> None:
         if not self.form.is_valid():
@@ -202,6 +197,7 @@ class TrainingPage(QWidget):
     def _show_error(self, message: str) -> None:
         self.error_summary.setText(message)
         self.error_summary.show()
+        self.tabs.setCurrentIndex(0)
         self.status.setText(self.translator.text("training.failed"))
 
     def _append_activity(self, text: str) -> None:
@@ -224,7 +220,7 @@ class TrainingPage(QWidget):
         try:
             candidates = load_listening_manifest(manifest, manifest.resolve().parent)
             self.candidate_page.set_candidates(candidates)
-            self.tabs.setCurrentIndex(self._tab_capabilities.index("listen"))
+            self.tabs.setCurrentIndex(1)
         except (OSError, ValueError) as error:
             self._protocol_failed(str(error))
 

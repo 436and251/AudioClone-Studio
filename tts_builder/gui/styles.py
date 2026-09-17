@@ -100,13 +100,15 @@ QToolButton#IconButton:pressed {
 
 QLabel#NavigationTitle {
     color: #B3B3B3;
-    font-size: 12px;
+    font-size: 16px;
     font-weight: 700;
     padding: 0 8px 8px 8px;
 }
 
 QPushButton#NavigationButton {
     background: transparent;
+    font-size: 13px;
+    font-weight: 600;
     border: none;
     border-radius: 0;
     border-bottom: 3px solid transparent;
