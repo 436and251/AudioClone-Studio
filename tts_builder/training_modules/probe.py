@@ -8,6 +8,7 @@ from typing import Callable
 
 from tts_builder.gui.settings import TrainingModuleSetting
 
+from .environment import child_environment
 from .models import ProbeResult
 from .protocol import parse_descriptor
 
@@ -41,6 +42,7 @@ def probe_module(
             text=True,
             encoding="utf-8",
             timeout=timeout_seconds,
+            env=child_environment(),
         )
         if completed.returncode != 0:
             return ProbeResult(False, error=f"module exited with code {completed.returncode}")

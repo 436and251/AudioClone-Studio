@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
@@ -32,7 +33,7 @@ def _setting(tmp_path: Path) -> TrainingModuleSetting:
     return TrainingModuleSetting("GPT-SoVITS", project, python, "voice_pipeline")
 
 
-def test_probe_uses_only_explicit_module_configuration(tmp_path: Path):
+def test_probe_uses_only_explicit_module_configuration(tmp_path: Path, monkeypatch):
     setting = _setting(tmp_path)
     calls = []
 
@@ -44,6 +45,9 @@ def test_probe_uses_only_explicit_module_configuration(tmp_path: Path):
             stderr="",
         )
 
+    for key in ("PYTHONPATH", "PYTHONHOME", "HF_HOME", "TORCH_HOME"):
+        monkeypatch.setenv(key, "parent-only")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
     result = probe_module(setting, run=run)
 
     assert result.available is True
@@ -65,6 +69,14 @@ def test_probe_uses_only_explicit_module_configuration(tmp_path: Path):
                 "text": True,
                 "encoding": "utf-8",
                 "timeout": 10,
+                "env": {
+                    **{
+                        key: value
+                        for key, value in os.environ.items()
+                        if key not in {"PYTHONPATH", "PYTHONHOME", "HF_HOME", "TORCH_HOME"}
+                    },
+                    "PYTHONNOUSERSITE": "1",
+                },
             },
         )
     ]
