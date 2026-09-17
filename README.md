@@ -67,12 +67,6 @@ clips / transcript / manifest / dataset.list
 ├── build_dataset.py             # CLI 入口
 ├── requirements.txt
 ├── requirements-gui.txt
-├── requirements-build.txt
-├── VoiceDatasetBuilder.spec
-├── scripts/
-│   └── build_windows.ps1
-├── vendor/
-│   └── ffmpeg/
 ├── assets/
 ├── tts_builder/
 │   ├── pipeline.py
@@ -195,6 +189,44 @@ Export
 ```
 
 各阶段会显示运行中、已完成、缓存命中或失败状态。
+
+---
+
+# 可选：接入训练模块（AudioClone Studio）
+
+训练模块是可选的。未配置训练模块时，程序保持原来的 `Voice Dataset Builder` 单页模式，素材挖掘、CLI 和缓存逻辑不依赖训练仓，也不会启动训练环境。
+
+配置至少一个通过协议检查的训练模块后，重启 GUI 会进入 `AudioClone Studio`，侧栏仅显示“素材挖掘”和“训练”。训练框架在训练页内部选择。
+
+## 推荐的环境边界
+
+AudioMiner 与训练模块使用各自的虚拟环境，避免 Torch、CUDA 和前端依赖互相污染。AudioMiner 只会用配置中的绝对 Python 路径启动训练子进程，不会把当前环境的 `PYTHONPATH`、`PYTHONHOME`、`HF_HOME` 或 `TORCH_HOME` 传给训练模块。
+
+以本项目配套的 `voice-pipeline` 为例，在“设置 → 训练模块”中填写：
+
+```text
+名称：GPT-SoVITS
+项目目录：voice-pipeline 仓库中包含 voice_pipeline 包的项目根目录
+Python：训练环境中的 python.exe 绝对路径
+模块入口：voice_pipeline
+```
+
+点击“检查连接”。连接成功后保存设置并重启 GUI；启动时只有显式配置且握手成功的模块会进入训练页面。删除全部训练模块配置并重启后，会恢复 standalone 单页模式。
+
+## 完整工作流
+
+1. 在“素材挖掘”中生成 `dataset.list`，完成后点击“继续训练”；也可以在训练页直接选择已有的 `dataset.list`。
+2. 选择训练框架、目标人项目目录、阶段和训练参数。`dataset.list` 与目标人项目必须对应。
+3. 启动后，预处理、S1、S2、评测等阶段状态会显示在训练页；S1/S2 显示模块上报的实际进度。错误、协议异常和子进程输出会立即进入错误区和 Activity 日志。
+4. 自动评测完成后，候选页只展示 `A`、`B`、`C`。每个候选提供中文、日文、英文试听；必须人工确认后才能晋升最终模型。
+
+每次 GUI 任务的协议快照、事件和日志保存在所选目标人项目的 `jobs/<job_id>/` 下。训练模块自身的阶段缓存和 checkpoint 仍由训练项目管理；失败后使用相同目标人项目和输入重新启动，模块可按其状态继续。当前 GUI 不会自动删除失败任务、试听候选或训练输出。
+
+## 语言切换
+
+在设置中可切换中文、English、日本語。普通界面文案受语言系统管理；`GPT-SoVITS`、框架名、路径、`A/B/C` 等专有名称或技术标识保持不变。
+
+> 本仓库只维护源码运行方式，不再提供或维护 PyInstaller/EXE 打包流程。
 
 ---
 
@@ -385,57 +417,6 @@ large-v3-turbo
 ```powershell
 --asr-device cpu
 ```
-
----
-
-# Windows 打包 （可选，非传递形exe）
-
-项目采用 **PyInstaller onedir** 方式发布 Windows 桌面程序。
-
-最终用户只需要启动：
-
-```text
-VoiceDatasetBuilder.exe
-```
-
-依赖文件会放在同一发布目录中，而不是强行压缩成单文件 EXE。
-
-## 1. 安装打包依赖
-
-```powershell
-uv pip install -r requirements-build.txt
-```
-
-## 2. 准备 FFmpeg
-
-将 Windows 版文件放入：
-
-```text
-vendor/ffmpeg/ffmpeg.exe
-vendor/ffmpeg/ffprobe.exe
-```
-
-开发态不需要做这一步；这里只是为了让最终发布包不依赖用户系统安装 FFmpeg。
-
-## 3. 执行构建
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
-```
-
-生成目录：
-
-```text
-dist/VoiceDatasetBuilder/
-```
-
-主程序：
-
-```text
-dist/VoiceDatasetBuilder/VoiceDatasetBuilder.exe
-```
-
-> Windows EXE 必须在 Windows 环境构建。PyInstaller 不支持从 Linux/macOS 直接交叉生成 Windows EXE。
 
 ---
 
