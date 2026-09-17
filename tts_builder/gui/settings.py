@@ -25,11 +25,21 @@ def default_output_root() -> Path:
 
 
 @dataclass(frozen=True)
+class TrainingModuleSetting:
+    name: str
+    project_root: Path
+    python_executable: Path
+    module_name: str
+
+
+@dataclass(frozen=True)
 class AppSettings:
     first_run_completed: bool = False
     model_root: Path = default_model_root()
     output_root: Path = default_output_root()
     preferred_asr_model: str = "large-v3-turbo"
+    locale: str = "en"
+    training_modules: tuple[TrainingModuleSetting, ...] = ()
 
     @classmethod
     def load(cls, path: Path | None = None) -> "AppSettings":
@@ -43,6 +53,8 @@ class AppSettings:
                 model_root=Path(data.get("model_root") or default_model_root()),
                 output_root=Path(data.get("output_root") or default_output_root()),
                 preferred_asr_model=str(data.get("preferred_asr_model") or "large-v3-turbo"),
+                locale=data.get("locale") if data.get("locale") in {"zh_CN", "en", "ja"} else "en",
+                training_modules=_training_modules(data.get("training_modules")),
             )
         except (OSError, ValueError, TypeError):
             return cls()
@@ -53,9 +65,40 @@ class AppSettings:
         payload = asdict(self)
         payload["model_root"] = str(self.model_root)
         payload["output_root"] = str(self.output_root)
+        payload["training_modules"] = [
+            {
+                "name": module.name,
+                "project_root": str(module.project_root),
+                "python_executable": str(module.python_executable),
+                "module_name": module.module_name,
+            }
+            for module in self.training_modules
+        ]
         temp = path.with_suffix(".tmp")
         temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         temp.replace(path)
+
+
+def _training_modules(value: object) -> tuple[TrainingModuleSetting, ...]:
+    if not isinstance(value, list):
+        return ()
+    modules = []
+    fields = ("name", "project_root", "python_executable", "module_name")
+    for entry in value:
+        if not isinstance(entry, dict) or any(
+            not isinstance(entry.get(field), str) or not entry[field].strip()
+            for field in fields
+        ):
+            continue
+        modules.append(
+            TrainingModuleSetting(
+                name=entry["name"].strip(),
+                project_root=Path(entry["project_root"]),
+                python_executable=Path(entry["python_executable"]),
+                module_name=entry["module_name"].strip(),
+            )
+        )
+    return tuple(modules)
 
 
 

@@ -1,5 +1,9 @@
 from pathlib import Path
-from tts_builder.gui.settings import AppSettings, apply_model_environment
+from tts_builder.gui.settings import (
+    AppSettings,
+    TrainingModuleSetting,
+    apply_model_environment,
+)
 
 
 def test_settings_round_trip(tmp_path: Path):
@@ -9,10 +13,64 @@ def test_settings_round_trip(tmp_path: Path):
         model_root=tmp_path / 'models',
         output_root=tmp_path / 'datasets',
         preferred_asr_model='large-v3-turbo',
+        locale='ja',
+        training_modules=(
+            TrainingModuleSetting(
+                name='GPT-SoVITS',
+                project_root=tmp_path / 'voice-pipeline',
+                python_executable=tmp_path / 'venv' / 'python.exe',
+                module_name='voice_pipeline',
+            ),
+        ),
     )
     settings.save(path)
     loaded = AppSettings.load(path)
     assert loaded == settings
+
+
+def test_old_settings_load_without_training_configuration(tmp_path: Path):
+    path = tmp_path / 'config.json'
+    path.write_text(
+        '{"first_run_completed":true,"preferred_asr_model":"small"}',
+        encoding='utf-8',
+    )
+
+    loaded = AppSettings.load(path)
+
+    assert loaded.locale == 'en'
+    assert loaded.training_modules == ()
+    assert loaded.preferred_asr_model == 'small'
+
+
+def test_invalid_optional_module_does_not_reset_legacy_settings(tmp_path: Path):
+    path = tmp_path / 'config.json'
+    path.write_text(
+        '{'
+        '"first_run_completed":true,'
+        '"preferred_asr_model":"small",'
+        '"locale":"zh_CN",'
+        '"training_modules":['
+        '{"name":"broken","project_root":12,"python_executable":null,"module_name":""},'
+        '{"name":"GPT-SoVITS","project_root":"D:/voice-pipeline",'
+        '"python_executable":"D:/venv/python.exe","module_name":"voice_pipeline"}'
+        ']'
+        '}',
+        encoding='utf-8',
+    )
+
+    loaded = AppSettings.load(path)
+
+    assert loaded.first_run_completed is True
+    assert loaded.preferred_asr_model == 'small'
+    assert loaded.locale == 'zh_CN'
+    assert loaded.training_modules == (
+        TrainingModuleSetting(
+            name='GPT-SoVITS',
+            project_root=Path('D:/voice-pipeline'),
+            python_executable=Path('D:/venv/python.exe'),
+            module_name='voice_pipeline',
+        ),
+    )
 
 
 def test_apply_model_environment_sets_separate_caches(tmp_path: Path, monkeypatch):
