@@ -198,23 +198,52 @@ Export
 
 AudioMiner 与训练模块使用各自的虚拟环境，避免 Torch、CUDA 和前端依赖互相污染。AudioMiner 只会用配置中的绝对 Python 路径启动训练子进程，不会把当前环境的 `PYTHONPATH`、`PYTHONHOME`、`HF_HOME` 或 `TORCH_HOME` 传给训练模块。
 
-以本项目配套的 `voice-pipeline` 为例，在“设置 → 训练模块”中填写：
+## 首次接入 voice-pipeline
+
+`voice-pipeline` 不是需要提前常驻启动的服务。AudioClone Studio 会在开始训练时，使用你指定的训练环境启动独立子进程；关闭 GUI 前不需要另开一个终端运行 pipeline。
+
+先在 PowerShell 中确认训练模块及预训练权重可用：
+
+```powershell
+Set-Location 'D:\AI-Training\voice-clone\voice-pipeline\voice-pipeline'
+$pipelinePython = 'D:\Python_program_codes\TTS-Inference\.venv-gpt-sovits\Scripts\python.exe'
+& $pipelinePython -m voice_pipeline module describe --json
+& $pipelinePython -m voice_pipeline models verify --project-root . --profile v2ProPlus
+```
+
+第一条命令应输出包含 `"protocol_version":1` 和 `"gpt-sovits-v2proplus"` 的 JSON；第二条命令应确认 v2ProPlus 权重完整。如果第一条提示找不到 `voice_pipeline`，在同一目录执行一次：
+
+```powershell
+uv pip install --python $pipelinePython -e . --no-deps
+```
+
+然后启动 AudioMiner：
+
+```powershell
+Set-Location 'D:\Python_program_codes\AudioMiner(voice-clone)'
+.\venv\Scripts\Activate.ps1
+python .\voice_dataset_builder.py
+```
+
+在 AudioMiner 的“设置 → 训练模块”中点击“添加”，按当前目录结构填写：
 
 ```text
 名称：GPT-SoVITS
-项目目录：voice-pipeline 仓库中包含 voice_pipeline 包的项目根目录
-Python：训练环境中的 python.exe 绝对路径
+项目目录：D:\AI-Training\voice-clone\voice-pipeline\voice-pipeline
+Python：D:\Python_program_codes\TTS-Inference\.venv-gpt-sovits\Scripts\python.exe
 模块入口：voice_pipeline
 ```
 
-点击“检查连接”。连接成功后保存设置并重启 GUI；启动时只有显式配置且握手成功的模块会进入训练页面。删除全部训练模块配置并重启后，会恢复 standalone 单页模式。
+点击“检查连接”。出现 `GPT-SoVITS v2ProPlus` 后保存设置、关闭并重新启动 GUI。窗口名称会变为 `AudioClone Studio`，左侧出现“素材挖掘”和“训练”。启动时只有显式配置且握手成功的模块会进入训练页面；删除全部训练模块配置并重启后，会恢复 standalone 单页模式。
 
 ## 完整工作流
 
 1. 在“素材挖掘”中生成 `dataset.list`，完成后点击“继续训练”；也可以在训练页直接选择已有的 `dataset.list`。
-2. 选择训练框架、目标人项目目录、阶段和训练参数。`dataset.list` 与目标人项目必须对应。
-3. 启动后，预处理、S1、S2、评测等阶段状态会显示在训练页；S1/S2 显示模块上报的实际进度。错误、协议异常和子进程输出会立即进入错误区和 Activity 日志。
-4. 自动评测完成后，候选页只展示 `A`、`B`、`C`。每个候选提供中文、日文、英文试听；必须人工确认后才能晋升最终模型。
+2. “项目目录”选择该目标人的数据目录。`dataset.list`、参考音频和输出目录都必须位于这个项目目录内；这是目标人之间隔离数据、缓存、任务和权重的边界。
+3. “项目名称”使用字母、数字、下划线或连字符，例如 `Acane`；选择 `cuda:0`、`fp16`，并勾选预处理、S2、S1、自动评测。
+4. 如果启用自动评测，选择项目目录内的参考音频，填写与音频一致的参考文本并选择对应语言。确认高级参数后点击“开始”。
+5. 预处理、S1、S2、评测等阶段状态会显示在训练页；S1/S2 显示模块上报的实际进度。错误、协议异常和子进程输出会立即进入错误区和 Activity 日志。
+6. 自动评测完成后，候选页只展示 `A`、`B`、`C`。每个候选提供中文、日文、英文试听；必须人工确认后才能晋升最终模型。
 
 每次 GUI 任务的协议快照、事件和日志保存在所选目标人项目的 `jobs/<job_id>/` 下。训练模块自身的阶段缓存和 checkpoint 仍由训练项目管理；失败后使用相同目标人项目和输入重新启动，模块可按其状态继续。当前 GUI 不会自动删除失败任务、试听候选或训练输出。
 

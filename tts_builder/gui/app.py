@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-import ctypes
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -18,23 +17,11 @@ from ..training_modules.models import ModuleDescriptor, ProbeResult
 from ..training_modules.probe import probe_module
 
 
-def set_windows_app_id() -> None:
-    if sys.platform == "win32":
-        try:
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "VoiceDatasetBuilder.Desktop"
-            )
-        except Exception:
-            pass
-
-
 def resource_path(relative_path: str) -> Path:
     return Path(__file__).resolve().parents[2] / relative_path
 
 
 def create_application(argv=None) -> QApplication:
-
-    set_windows_app_id()
     app = QApplication.instance() or QApplication(argv or sys.argv)
 
     app.setApplicationName("Voice Dataset Builder")

@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QDialog
 
 from tts_builder.gui.app import create_application
+from tts_builder.gui import app as gui_app
 from tts_builder.gui.main_window import MainWindow
 from tts_builder.gui.settings import AppSettings
 
@@ -143,3 +144,10 @@ def test_settings_action_applies_accepted_values_to_the_live_window(tmp_path, mo
     assert window.model.currentText() == 'small'
     assert window.windowTitle() == '语音数据集构建器'
     window.close()
+
+
+def test_source_gui_uses_its_window_icon_without_packaged_shell_identity():
+    app = create_application([])
+
+    assert not hasattr(gui_app, "set_windows_app_id")
+    assert app.windowIcon().isNull() is False
