@@ -114,7 +114,7 @@ uv venv --python 3.12
 激活环境：
 
 ```powershell
-.venv\Scripts\Activate.ps1
+.venv\Scripts\activate.ps1
 ```
 
 安装核心依赖：
@@ -192,7 +192,7 @@ Export
 
 训练模块是可选的。未配置训练模块时，程序保持原来的 `Voice Dataset Builder` 单页模式，素材挖掘、CLI 和缓存逻辑不依赖训练仓，也不会启动训练环境。
 
-配置至少一个通过协议检查的训练模块后，重启 GUI 会进入 `AudioClone Studio`，侧栏仅显示“素材挖掘”和“训练”。训练框架在训练页内部选择。
+配置至少一个通过协议检查的训练模块后，重启 GUI 会进入 `AudioClone Studio`，侧栏显示“素材挖掘”和“训练”。训练框架在训练页内部选择。
 
 ## 推荐的环境边界
 
