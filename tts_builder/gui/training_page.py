@@ -16,7 +16,7 @@ from ..training_modules.process import ModuleProcessController
 from .i18n import LocaleController, Translator
 from .candidate_page import CandidatePage
 from .styles import FAILED, MUTED
-from .training_form import ModuleBinding, TrainingForm
+from .training_form import ModuleBinding, TrainingForm, TrainingSelection
 from .training_progress import TrainingProgress
 
 
@@ -38,6 +38,8 @@ class TrainingPage(QWidget):
         self._process_factory = process_factory
         self.process = None
         self.job_path: Path | None = None
+        self.active_selection: TrainingSelection | None = None
+        self._running = False
         self._operation = "run"
 
         layout = QVBoxLayout(self)
@@ -78,6 +80,10 @@ class TrainingPage(QWidget):
         actions.addWidget(self.stop_button)
         actions.addWidget(self.start_button)
         config_layout.addLayout(actions)
+        self.next_run_hint = QLabel()
+        self.next_run_hint.setStyleSheet(f"color:{MUTED}")
+        self.next_run_hint.hide()
+        config_layout.addWidget(self.next_run_hint)
 
         progress_card = QFrame()
         progress_card.setObjectName("Card")
@@ -127,26 +133,28 @@ class TrainingPage(QWidget):
         self.start_button.setText(translator.text("training.start"))
         self.stop_button.setText(translator.text("actions.stop"))
         self.activity_label.setText(translator.text("logs.activity"))
+        self.next_run_hint.setText(translator.text("training.next_run_hint"))
         self.form.retranslate_ui(translator)
         self.progress.retranslate_ui(translator)
 
     def _start(self) -> None:
         if not self.form.is_valid():
             return
-        setting, module, framework = self.form.selection()
-        if setting is None:
+        selection = self.form.snapshot()
+        if selection.setting is None:
             self._show_error(self.translator.text("training.module_unavailable"))
             return
         try:
             self.job_path = self._build_job(
-                Path(self.form.project_edit.text()).resolve(),
-                module,
-                framework,
-                self.form.values(),
-                self.form.selected_stages(),
-                self.form.training_data_path(),
+                selection.project_dir,
+                selection.module,
+                selection.framework,
+                selection.values,
+                selection.stages,
+                selection.training_data,
             )
-            process = self._process_factory(setting)
+            self.active_selection = selection
+            process = self._process_factory(selection.setting)
             self.attach_process(process)
             self._operation = "run"
             self.error_summary.hide()
@@ -154,6 +162,7 @@ class TrainingPage(QWidget):
             process.start(self.job_path)
             self.status.setText(self.translator.text("training.running"))
         except Exception as error:
+            self.active_selection = None
             self._set_running(False)
             self._show_error(str(error))
 
@@ -205,13 +214,15 @@ class TrainingPage(QWidget):
         self.activity.appendPlainText(f"{stamp}  {text}")
 
     def _set_running(self, running: bool) -> None:
-        self.form.setEnabled(not running)
+        self._running = running
+        self.form.setEnabled(True)
         self.stop_button.setEnabled(running)
         self.start_button.setEnabled(not running and self.form.is_valid())
+        self.next_run_hint.setVisible(running)
         self.candidate_page.set_busy(running)
 
     def _update_actions(self, *_):
-        self.start_button.setEnabled(self.form.isEnabled() and self.form.is_valid())
+        self.start_button.setEnabled(not self._running and self.form.is_valid())
 
     def _locale_changed(self, locale: str) -> None:
         self.retranslate_ui(Translator(locale))

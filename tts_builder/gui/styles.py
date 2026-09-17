@@ -75,6 +75,12 @@ QToolButton:hover {
     color: #FFFFFF;
 }
 
+QToolButton#AdvancedToggle {
+    border: none;
+    padding: 8px 0;
+    font-weight: 600;
+}
+
 QToolButton#IconButton {
     background: #2A2A2A;
     color: #FFFFFF;

@@ -1,4 +1,5 @@
 import os
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -153,3 +154,103 @@ def test_training_data_browse_and_validation_follow_descriptor(tmp_path, monkeyp
     form._browse_dataset()
     assert calls == ["file", "directory"]
     assert form.training_data_path() == directory.resolve()
+
+
+def test_advanced_settings_start_closed_and_toggle_without_bottom_border(tmp_path):
+    from tts_builder.gui.styles import APP_QSS
+    from tts_builder.gui.training_form import TrainingForm
+
+    create_application([])
+    form = TrainingForm((_binding(tmp_path),), Translator("en"))
+
+    assert form.advanced_toggle.isCheckable()
+    assert not form.advanced_toggle.isChecked()
+    assert form.advanced_content.isHidden()
+    form._framework_changed()
+    assert form.advanced_content.isHidden()
+
+    form.advanced_toggle.click()
+    assert not form.advanced_content.isHidden()
+    block = APP_QSS.split("QToolButton#AdvancedToggle", 1)[1].split("}", 1)[0]
+    assert "border-bottom" not in block
+
+
+def test_combo_and_spin_wheels_scroll_page_without_changing_values(tmp_path):
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication, QScrollArea
+    from tts_builder.gui.training_form import TrainingForm
+
+    app = create_application([])
+    form = TrainingForm((_binding(tmp_path),), Translator("en"))
+    form.advanced_toggle.click()
+    form.setMinimumHeight(1000)
+    area = QScrollArea()
+    area.resize(520, 260)
+    area.setWidget(form)
+    area.show()
+    app.processEvents()
+    bar = area.verticalScrollBar()
+    bar.setValue(100)
+    before_scroll = bar.value()
+    widgets = [
+        form.device,
+        form.precision,
+        form.reference_language,
+        form.advanced_fields["steps"],
+        form.advanced_fields["rate"],
+        form.advanced_fields["mode"],
+    ]
+    values = [
+        widget.currentIndex() if hasattr(widget, "currentIndex") else widget.value()
+        for widget in widgets
+    ]
+    event = QWheelEvent(
+        QPointF(5, 5),
+        QPointF(5, 5),
+        QPoint(),
+        QPoint(0, -120),
+        Qt.NoButton,
+        Qt.NoModifier,
+        Qt.ScrollUpdate,
+        False,
+    )
+
+    QApplication.sendEvent(form.device, event)
+    for widget in widgets[1:]:
+        QApplication.sendEvent(
+            widget,
+            QWheelEvent(
+                QPointF(5, 5), QPointF(5, 5), QPoint(), QPoint(0, -120),
+                Qt.NoButton, Qt.NoModifier, Qt.ScrollUpdate, False,
+            ),
+        )
+
+    assert [
+        widget.currentIndex() if hasattr(widget, "currentIndex") else widget.value()
+        for widget in widgets
+    ] == values
+    assert bar.value() > before_scroll
+    area.close()
+
+
+def test_snapshot_is_a_frozen_start_time_selection(tmp_path):
+    from tts_builder.gui.training_form import TrainingForm
+
+    create_application([])
+    form = TrainingForm((_binding(tmp_path),), Translator("en"))
+    project, dataset = _project(tmp_path)
+    form.prefill_dataset(dataset)
+    reference = project / "reference.wav"
+    reference.write_bytes(b"wav")
+    form.reference_audio.setText(str(reference))
+    form.advanced_fields["resource"].setText(str(project))
+
+    snapshot = form.snapshot()
+
+    assert snapshot.project_dir == project.resolve()
+    assert snapshot.training_data == dataset.resolve()
+    assert snapshot.values["project_name"] == "Acane"
+    assert snapshot.values["parameters"]["steps"] == 10
+    with pytest.raises(FrozenInstanceError):
+        snapshot.project_dir = tmp_path

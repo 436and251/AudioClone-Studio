@@ -1,6 +1,7 @@
 import os
 import hashlib
 import json
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,7 @@ from tts_builder.gui.app import create_application
 from tts_builder.gui.i18n import LocaleController
 from tts_builder.gui.settings import AppSettings, TrainingModuleSetting
 from tts_builder.training_modules.models import (
+    FieldDescriptor,
     FrameworkDescriptor,
     ModuleDescriptor,
     ModuleEvent,
@@ -71,10 +73,12 @@ def _binding(tmp_path: Path):
     python.parent.mkdir()
     python.write_bytes(b"")
     setting = TrainingModuleSetting("GPT-SoVITS", module_root, python, "voice_pipeline")
+    labels = {"en": "Batch size", "zh_CN": "批大小", "ja": "バッチサイズ"}
     framework = FrameworkDescriptor(
         "v2ProPlus", "GPT-SoVITS v2ProPlus",
         ("preprocess", "train", "evaluate", "listen", "promote", "infer"),
-        TrainingDataDescriptor("file", (".list",)), (),
+        TrainingDataDescriptor("file", (".list",)),
+        (FieldDescriptor("s2.batch_size", "integer", 2, {"minimum": 1}, labels),),
     )
     return setting, ModuleDescriptor(2, "gpt-sovits", "1.0", (framework,))
 
@@ -168,6 +172,52 @@ def test_training_workspace_has_three_fixed_localized_pages(tmp_path, locale, la
     assert page.config_page.isAncestorOf(page.form)
     assert page.config_page.isAncestorOf(page.progress)
     assert not page.candidate_page.isAncestorOf(page.form)
+    page.close()
+
+
+def test_running_job_uses_snapshot_while_form_edits_apply_next_time(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    process = FakeModuleProcess()
+    calls = []
+    project, dataset = _project(tmp_path)
+    job = project / "jobs" / "job-1" / "job.json"
+    job.parent.mkdir(parents=True)
+    job.write_text("{}", encoding="utf-8")
+
+    def build(*args):
+        calls.append(args)
+        return job
+
+    page = TrainingPage(
+        (_binding(tmp_path),), LocaleController("en"),
+        build_job=build, process_factory=lambda _setting: process,
+    )
+    page.prefill_dataset(dataset)
+    reference = project / "reference.wav"
+    reference.write_bytes(b"wav")
+    page.form.reference_audio.setText(str(reference))
+    page.start_button.click()
+    snapshot = page.active_selection
+
+    page.form.project_name.setText("NextRun")
+    page.form.advanced_fields["s2.batch_size"].setValue(8)
+    app.processEvents()
+
+    assert snapshot.values["project_name"] == "Acane"
+    assert snapshot.values["parameters"]["s2.batch_size"] == 2
+    assert calls[0][3]["project_name"] == "Acane"
+    assert calls[0][3]["parameters"]["s2.batch_size"] == 2
+    assert page.form.project_name.text() == "NextRun"
+    assert page.form.advanced_fields["s2.batch_size"].value() == 8
+    assert page.form.isEnabled()
+    assert not page.start_button.isEnabled()
+    assert page.stop_button.isEnabled()
+    assert page.next_run_hint.isVisibleTo(page)
+    assert page.next_run_hint.text() == "Changes apply to the next run."
+    with pytest.raises(FrozenInstanceError):
+        snapshot.project_dir = tmp_path
     page.close()
 
 

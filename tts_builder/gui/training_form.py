@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 import re
 from typing import Sequence
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QAbstractScrollArea, QAbstractSpinBox, QApplication, QCheckBox, QComboBox,
+    QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+    QPushButton, QSpinBox, QToolButton, QVBoxLayout, QWidget,
 )
 
 from ..training_modules.models import FieldDescriptor, FrameworkDescriptor, ModuleDescriptor
@@ -18,6 +21,39 @@ from .settings import TrainingModuleSetting
 _STAGES = ("preprocess", "s2", "s1", "evaluate")
 _PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
 ModuleBinding = tuple[TrainingModuleSetting | None, ModuleDescriptor]
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingSelection:
+    setting: TrainingModuleSetting | None
+    module: ModuleDescriptor
+    framework: FrameworkDescriptor
+    project_dir: Path
+    values: dict[str, object]
+    stages: tuple[str, ...]
+    training_data: Path
+
+
+class _WheelGuard(QObject):
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() != QEvent.Wheel:
+            return False
+        parent = watched.parentWidget()
+        while parent is not None and not isinstance(parent, QAbstractScrollArea):
+            parent = parent.parentWidget()
+        if parent is not None:
+            forwarded = QWheelEvent(
+                event.position(),
+                event.globalPosition(),
+                event.pixelDelta(),
+                event.angleDelta(),
+                event.buttons(),
+                event.modifiers(),
+                event.phase(),
+                event.inverted(),
+            )
+            QApplication.sendEvent(parent.viewport(), forwarded)
+        return True
 
 
 class TrainingForm(QWidget):
@@ -35,6 +71,7 @@ class TrainingForm(QWidget):
         self.advanced_fields: dict[str, QWidget] = {}
         self._field_descriptors: dict[str, FieldDescriptor] = {}
         self._advanced_labels: dict[str, QLabel] = {}
+        self._wheel_guard = _WheelGuard(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -102,11 +139,27 @@ class TrainingForm(QWidget):
         common.addRow(self.reference_language_label, self.reference_language)
         layout.addLayout(common)
 
-        self.advanced_group = QGroupBox()
-        self.advanced_layout = QFormLayout(self.advanced_group)
-        layout.addWidget(self.advanced_group)
+        self.advanced_toggle = QToolButton()
+        self.advanced_toggle.setObjectName("AdvancedToggle")
+        self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.advanced_toggle.setArrowType(Qt.RightArrow)
+        layout.addWidget(self.advanced_toggle)
+        self.advanced_content = QWidget()
+        self.advanced_layout = QFormLayout(self.advanced_content)
+        self.advanced_content.hide()
+        layout.addWidget(self.advanced_content)
+
+        for widget in (
+            self.framework_combo,
+            self.device,
+            self.precision,
+            self.reference_language,
+        ):
+            widget.installEventFilter(self._wheel_guard)
 
         self.framework_combo.currentIndexChanged.connect(self._framework_changed)
+        self.advanced_toggle.toggled.connect(self._toggle_advanced)
         for edit in (
             self.project_name, self.project_edit, self.dataset_edit, self.output_edit,
             self.reference_audio, self.reference_text,
@@ -140,6 +193,18 @@ class TrainingForm(QWidget):
 
     def training_data_path(self) -> Path:
         return Path(self.dataset_edit.text()).resolve()
+
+    def snapshot(self) -> TrainingSelection:
+        setting, module, framework = self.selection()
+        return TrainingSelection(
+            setting=setting,
+            module=module,
+            framework=framework,
+            project_dir=Path(self.project_edit.text()).resolve(),
+            values=self.values(),
+            stages=self.selected_stages(),
+            training_data=self.training_data_path(),
+        )
 
     def values(self) -> dict[str, object]:
         reference = None
@@ -218,7 +283,7 @@ class TrainingForm(QWidget):
         for index in range(self.reference_language.count()):
             code = self.reference_language.itemData(index)
             self.reference_language.setItemText(index, translator.text(f"language.{code}"))
-        self.advanced_group.setTitle(translator.text("training.advanced"))
+        self.advanced_toggle.setText(translator.text("training.advanced"))
         for key, label in self._advanced_labels.items():
             label.setText(self._field_descriptors[key].labels[translator.locale])
 
@@ -250,8 +315,16 @@ class TrainingForm(QWidget):
             self._field_descriptors[descriptor.key] = descriptor
             self._advanced_labels[descriptor.key] = label
             self.advanced_layout.addRow(label, widget)
+            if isinstance(widget, (QComboBox, QAbstractSpinBox)):
+                widget.installEventFilter(self._wheel_guard)
             _connect_change(widget, self._changed)
         self._changed()
+
+    def _toggle_advanced(self, expanded: bool) -> None:
+        self.advanced_toggle.setArrowType(
+            Qt.DownArrow if expanded else Qt.RightArrow
+        )
+        self.advanced_content.setVisible(expanded)
 
     def _changed(self, *_):
         self.validity_changed.emit(self.is_valid())
