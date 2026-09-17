@@ -7,6 +7,7 @@ from .models import (
 )
 from .probe import probe_module
 from .protocol import parse_descriptor
+from .job import build_job
 
 __all__ = [
     "FieldDescriptor",
@@ -16,4 +17,5 @@ __all__ = [
     "ProbeResult",
     "parse_descriptor",
     "probe_module",
+    "build_job",
 ]

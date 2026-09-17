@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QComboBox, QDialog, QFileDialog, QFormLayout, QHBo
 
 from .model_manager import is_asr_model_ready
 from .i18n import Translator
+from .module_settings import ModuleSettings
 from .settings import AppSettings, model_cache_paths, normalize_model_root
 from .styles import MUTED
 
@@ -52,6 +53,10 @@ class SettingsDialog(QDialog):
         self.model_root.textChanged.connect(self._update_ready)
         self.model_root.textChanged.connect(self._update_model_paths_hint)
         layout.addLayout(form)
+        self.module_settings = ModuleSettings(
+            settings.training_modules, self.translator, self
+        )
+        layout.addWidget(self.module_settings)
         layout.addStretch(1)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
@@ -63,8 +68,10 @@ class SettingsDialog(QDialog):
         buttons.addWidget(self.cancel)
         buttons.addWidget(self.save_button)
         layout.addLayout(buttons)
+        self.module_settings.validity_changed.connect(self.save_button.setEnabled)
         self.locale.currentIndexChanged.connect(self._locale_changed)
         self.retranslate_ui(self.translator)
+        self.save_button.setEnabled(self.module_settings.is_valid())
         self._update_ready()
         self._update_model_paths_hint()
 
@@ -95,6 +102,7 @@ class SettingsDialog(QDialog):
         self.model_status_label.setText(translator.text("settings.model_status"))
         self.cancel.setText(translator.text("settings.cancel"))
         self.save_button.setText(translator.text("settings.save"))
+        self.module_settings.retranslate_ui(translator)
         for button in self._browse_buttons:
             button.setText(translator.text("source.browse"))
         for index in range(self.locale.count()):
@@ -131,4 +139,5 @@ class SettingsDialog(QDialog):
             output_root=Path(self.output_root.text()).expanduser(),
             preferred_asr_model=self.model.currentText(),
             locale=self.locale.currentData(),
+            training_modules=self.module_settings.modules(),
         )
