@@ -118,6 +118,16 @@ QPushButton#NavigationButton:hover { background: #1B1B1B; }
 QPushButton#NavigationButton[selected="true"] { border-bottom-color: #1ED760; }
 
 QScrollArea { border: none; }
+QTabWidget::pane { border: none; }
+QTabBar::tab {
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 10px 14px;
+    color: #B3B3B3;
+}
+QTabBar::tab:hover { color: #FFFFFF; }
+QTabBar::tab:selected { color: #FFFFFF; border-bottom-color: #1ED760; }
 """
 
 GREEN = "#1ED760"

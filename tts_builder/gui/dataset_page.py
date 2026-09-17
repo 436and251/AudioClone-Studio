@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
@@ -25,8 +25,11 @@ from .styles import FAILED, MUTED
 
 
 class DatasetPage(QWidget):
+    training_requested = Signal(str)
+
     def __init__(self, settings: AppSettings, controller: TaskController, parent=None,
-                 locale_controller: LocaleController | None = None):
+                 locale_controller: LocaleController | None = None,
+                 training_available: bool = False):
         super().__init__(parent)
         self.settings = settings
         self.controller = controller
@@ -36,6 +39,7 @@ class DatasetPage(QWidget):
         self._status_key = None
         self._status_values = {}
         self._start_mode = "build"
+        self.training_available = training_available
         self._build()
         self._wire()
         self.retranslate_ui(self.translator)
@@ -109,6 +113,11 @@ class DatasetPage(QWidget):
         self.start.clicked.connect(self._start)
         actions.addWidget(self.status, 1)
         actions.addWidget(self.open_output)
+        self.continue_training = QPushButton()
+        self.continue_training.setObjectName("Primary")
+        self.continue_training.hide()
+        self.continue_training.clicked.connect(self._continue_training)
+        actions.addWidget(self.continue_training)
         actions.addWidget(self.stop)
         actions.addWidget(self.start)
         layout.addLayout(actions)
@@ -153,6 +162,7 @@ class DatasetPage(QWidget):
         self.output_label.setText(translator.text("output.directory"))
         self.output_browse.setText(translator.text("output.browse"))
         self.open_output.setText(translator.text("output.open"))
+        self.continue_training.setText(translator.text("training.continue"))
         self.stop.setText(translator.text("actions.stop"))
         self.start.setText(translator.text(f"actions.{self._start_mode}"))
         self.processing_label.setText(translator.text("processing.title"))
@@ -227,6 +237,8 @@ class DatasetPage(QWidget):
         self.status.setStyleSheet(f"color:{MUTED}")
         self._set_status("status.ready", accepted=summary.accepted, rejected=summary.rejected)
         self._set_start_mode("build")
+        dataset = Path(self.output.text()).expanduser().resolve() / "dataset.list"
+        self.continue_training.setVisible(self.training_available and dataset.is_file())
 
     def _failed(self, title: str, message: str, detail: str) -> None:
         self.status.setStyleSheet(f"color:{FAILED}")
@@ -244,6 +256,11 @@ class DatasetPage(QWidget):
     def _stop(self) -> None:
         self._set_status("status.stopping")
         self.controller.stop()
+
+    def _continue_training(self) -> None:
+        dataset = Path(self.output.text()).expanduser().resolve() / "dataset.list"
+        if self.training_available and dataset.is_file():
+            self.training_requested.emit(str(dataset))
 
     def _browse_output(self) -> None:
         path = QFileDialog.getExistingDirectory(

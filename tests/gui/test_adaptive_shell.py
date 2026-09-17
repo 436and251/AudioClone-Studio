@@ -96,6 +96,32 @@ def test_explicit_module_probe_runs_off_the_gui_thread(tmp_path):
     assert probe_threads and probe_threads[0] != caller_thread
 
 
+def test_available_module_binding_keeps_its_own_environment(tmp_path):
+    first_project = tmp_path / "broken"
+    second_project = tmp_path / "working"
+    first_python = tmp_path / "venv1" / "python.exe"
+    second_python = tmp_path / "venv2" / "python.exe"
+    first_project.mkdir()
+    second_project.mkdir()
+    first_python.parent.mkdir()
+    second_python.parent.mkdir()
+    first_python.write_bytes(b"")
+    second_python.write_bytes(b"")
+    first = TrainingModuleSetting("Broken", first_project, first_python, "broken")
+    second = TrainingModuleSetting("Working", second_project, second_python, "working")
+
+    bindings = gui_app.discover_available_module_bindings(
+        _settings(tmp_path, (first, second)),
+        probe=lambda setting: (
+            ProbeResult(False, error="offline")
+            if setting is first
+            else ProbeResult(True, descriptor=_descriptor())
+        ),
+    )
+
+    assert bindings == ((second, _descriptor()),)
+
+
 def test_available_module_uses_studio_with_two_localized_business_buttons(tmp_path):
     app = create_application([])
     window = gui_app.choose_window(_settings(tmp_path), (_descriptor(),))

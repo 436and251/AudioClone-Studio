@@ -59,13 +59,24 @@ def discover_available_modules(
     *,
     probe: Callable[[TrainingModuleSetting], ProbeResult] = probe_module,
 ) -> tuple[ModuleDescriptor, ...]:
+    return tuple(
+        descriptor
+        for _, descriptor in discover_available_module_bindings(settings, probe=probe)
+    )
+
+
+def discover_available_module_bindings(
+    settings: AppSettings,
+    *,
+    probe: Callable[[TrainingModuleSetting], ProbeResult] = probe_module,
+):
     if not settings.training_modules:
         return ()
     with ThreadPoolExecutor(max_workers=min(4, len(settings.training_modules))) as pool:
         results = tuple(pool.map(probe, settings.training_modules))
     return tuple(
-        result.descriptor
-        for result in results
+        (setting, result.descriptor)
+        for setting, result in zip(settings.training_modules, results)
         if result.available and result.descriptor is not None
     )
 
@@ -93,7 +104,7 @@ def main(argv=None) -> int:
 
         apply_model_environment(settings.model_root)
 
-    modules = discover_available_modules(settings)
+    modules = discover_available_module_bindings(settings)
     window = choose_window(settings, modules)
     app.setApplicationName(window.windowTitle())
 
