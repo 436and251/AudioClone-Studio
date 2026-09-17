@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..runtime import resolve_binary
+from .i18n import Translator
 
 
 @dataclass(frozen=True)
@@ -27,13 +28,15 @@ class Recommendation:
     message: str
 
 
-def recommendation_for(info: HardwareInfo) -> Recommendation:
+def recommendation_for(info: HardwareInfo, translator: Translator | None = None) -> Recommendation:
+    translator = translator or Translator("en")
     if info.cuda_available:
-        return Recommendation("cuda", "large-v3-turbo", "NVIDIA acceleration available")
-    return Recommendation("cpu", "small", "CPU mode is available but substantially slower")
+        return Recommendation("cuda", "large-v3-turbo", translator.text("system.cuda_available"))
+    return Recommendation("cpu", "small", translator.text("system.cpu_available"))
 
 
-def detect_system(model_root: Path) -> HardwareInfo:
+def detect_system(model_root: Path, translator: Translator | None = None) -> HardwareInfo:
+    translator = translator or Translator("en")
     root = Path(model_root).expanduser()
     root.mkdir(parents=True, exist_ok=True)
     free_gb = shutil.disk_usage(root).free / (1024 ** 3)
@@ -41,7 +44,7 @@ def detect_system(model_root: Path) -> HardwareInfo:
     gpu_name, cuda = _cuda_info()
     return HardwareInfo(
         os_name=platform.system(),
-        cpu_name=platform.processor() or "Unknown CPU",
+        cpu_name=platform.processor() or translator.text("system.unknown_cpu"),
         ram_gb=ram_gb,
         gpu_name=gpu_name,
         cuda_available=cuda,

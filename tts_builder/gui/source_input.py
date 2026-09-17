@@ -6,25 +6,33 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
+from .i18n import Translator
+
 
 class SourceInput(QWidget):
     source_changed = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, translator: Translator | None = None, parent=None):
         super().__init__(parent)
+        self.translator = translator or Translator("en")
         self.setAcceptDrops(True)
         self.edit = QLineEdit()
-        self.edit.setPlaceholderText("Paste a media URL or choose a local audio/video file")
         self.edit.textChanged.connect(self.source_changed)
-        browse = QPushButton("Browse")
-        browse.clicked.connect(self._browse)
+        self.browse = QPushButton()
+        self.browse.clicked.connect(self._browse)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.edit, 1)
-        row.addWidget(browse)
+        row.addWidget(self.browse)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(row)
+        self.retranslate_ui(self.translator)
+
+    def retranslate_ui(self, translator: Translator) -> None:
+        self.translator = translator
+        self.edit.setPlaceholderText(translator.text("source.placeholder"))
+        self.browse.setText(translator.text("source.browse"))
 
     def value(self) -> str:
         return self.edit.text().strip()
@@ -34,7 +42,10 @@ class SourceInput(QWidget):
 
     def _browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Choose media", "", "Media files (*.wav *.mp3 *.m4a *.flac *.mp4 *.mkv *.mov *.webm);;All files (*)"
+            self,
+            self.translator.text("source.choose_media"),
+            "",
+            self.translator.text("source.media_filter"),
         )
         if path:
             self.set_value(path)
