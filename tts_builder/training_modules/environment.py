@@ -13,4 +13,6 @@ def child_environment() -> dict[str, str]:
         if key.upper() not in _PARENT_ONLY
     }
     environment["PYTHONNOUSERSITE"] = "1"
+    environment["PYTHONUTF8"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
     return environment

@@ -237,6 +237,10 @@ def test_training_progress_and_errors_are_immediately_visible_and_bounded(tmp_pa
     process.event_received.emit(ModuleEvent(
         1, "job", "stage_started", "now", stage="s2"
     ))
+    app.processEvents()
+    assert page.progress.rows["s2"].bar.minimum() == 0
+    assert page.progress.rows["s2"].bar.maximum() == 100
+    assert page.progress.rows["s2"].bar.value() == 0
     process.event_received.emit(ModuleEvent(
         1, "job", "stage_progress", "now", stage="s2", current=25, total=100
     ))

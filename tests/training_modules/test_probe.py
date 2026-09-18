@@ -77,6 +77,8 @@ def test_probe_uses_only_explicit_module_configuration(tmp_path: Path, monkeypat
                         if key not in {"PYTHONPATH", "PYTHONHOME", "HF_HOME", "TORCH_HOME"}
                     },
                     "PYTHONNOUSERSITE": "1",
+                    "PYTHONUTF8": "1",
+                    "PYTHONIOENCODING": "utf-8",
                 },
             },
         )

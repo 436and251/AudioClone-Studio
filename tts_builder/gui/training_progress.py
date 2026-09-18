@@ -59,7 +59,9 @@ class TrainingProgress(QWidget):
             row.bar.setRange(0, 100)
             row.bar.setValue(min(100, round(event.current / event.total * 100)))
         elif row.state == "running":
-            row.bar.setRange(0, 0)
+            row.bar.setRange(0, 100)
+            if event.type == "stage_started":
+                row.bar.setValue(0)
         elif row.state in {"cached", "done"}:
             row.bar.setRange(0, 100)
             row.bar.setValue(100)

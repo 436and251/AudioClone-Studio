@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import json
 import os
 from pathlib import Path
@@ -42,6 +43,9 @@ class ModuleProcessController(QObject):
         self._stderr = None
         self._stderr_path: Path | None = None
         self._stderr_offset = 0
+        self._stderr_decoder = codecs.getincrementaldecoder("utf-8")(
+            errors="replace"
+        )
         self._stop_requested_at: float | None = None
         self._timer = QTimer(self)
         self._timer.setInterval(250)
@@ -110,6 +114,7 @@ class ModuleProcessController(QObject):
         self._stderr_offset = (
             self._stderr_path.stat().st_size if self._stderr_path.exists() else 0
         )
+        self._stderr_decoder.reset()
         self._stdout = stdout_path.open("ab")
         self._stderr = self._stderr_path.open("ab")
         command = [
@@ -146,6 +151,9 @@ class ModuleProcessController(QObject):
             return
         self._timer.stop()
         self._drain()
+        tail = self._stderr_decoder.decode(b"", final=True)
+        if tail:
+            self.stderr_received.emit(tail)
         self._close_logs()
         self._process = None
         self.completed.emit(returncode)
@@ -163,7 +171,9 @@ class ModuleProcessController(QObject):
                 chunk = stream.read(64 * 1024)
                 if chunk:
                     self._stderr_offset += len(chunk)
-                    self.stderr_received.emit(chunk.decode("utf-8", errors="replace"))
+                    text = self._stderr_decoder.decode(chunk, final=False)
+                    if text:
+                        self.stderr_received.emit(text)
 
     def _close_logs(self) -> None:
         for stream in (self._stdout, self._stderr):

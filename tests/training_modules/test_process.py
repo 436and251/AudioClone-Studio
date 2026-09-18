@@ -82,6 +82,8 @@ def test_start_uses_explicit_interpreter_safe_paths_and_isolated_environment(
     assert Path(options["stderr"].name).parent == job.parent.resolve()
     assert options["env"]["CUDA_VISIBLE_DEVICES"] == "0"
     assert options["env"]["PYTHONNOUSERSITE"] == "1"
+    assert options["env"]["PYTHONUTF8"] == "1"
+    assert options["env"]["PYTHONIOENCODING"] == "utf-8"
     for key in ("PYTHONPATH", "PYTHONHOME", "HF_HOME", "TORCH_HOME"):
         assert key not in options["env"]
     if os.name == "nt":
@@ -229,6 +231,33 @@ def test_poll_emits_journal_stderr_and_completion(tmp_path: Path):
     assert [event.type for event in events] == ["job_completed"]
     assert "".join(diagnostics) == "训练完成\n"
     assert completed == [0]
+
+
+def test_poll_decodes_utf8_split_across_reads(tmp_path: Path):
+    from tts_builder.training_modules.process import ModuleProcessController
+
+    create_application([])
+    job = _job(tmp_path)
+    process = FakeProcess()
+    controller = ModuleProcessController(
+        _setting(tmp_path), popen=lambda *_args, **_kwargs: process
+    )
+    diagnostics = []
+    controller.stderr_received.connect(diagnostics.append)
+    controller.start(job)
+    encoded = "█\n".encode("utf-8")
+
+    with (job.parent / "module.stderr.log").open("ab") as stream:
+        stream.write(encoded[:2])
+    controller._poll()
+    assert diagnostics == []
+
+    with (job.parent / "module.stderr.log").open("ab") as stream:
+        stream.write(encoded[2:])
+    process.returncode = 0
+    controller._poll()
+
+    assert "".join(diagnostics) == "█\n"
 
 
 def test_poll_bounds_stderr_work_and_reports_protocol_errors(tmp_path: Path):
