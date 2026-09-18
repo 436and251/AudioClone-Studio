@@ -27,5 +27,7 @@ def test_real_voice_pipeline_descriptor_handshake():
     assert result.descriptor.protocol_version == 2
     assert result.descriptor.module_id
     assert result.descriptor.frameworks
-    assert result.descriptor.frameworks[0].training_data.kind == "file"
-    assert result.descriptor.frameworks[0].training_data.extensions == (".list",)
+    framework = result.descriptor.frameworks[0]
+    assert framework.training_data.kind == "file"
+    assert framework.training_data.extensions == (".list",)
+    assert "infer" in framework.capabilities

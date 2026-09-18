@@ -211,7 +211,7 @@ $pipelinePython = 'D:\Python_program_codes\TTS-Inference\.venv-gpt-sovits\Script
 & $pipelinePython -m voice_pipeline models verify --project-root . --profile v2ProPlus
 ```
 
-第一条命令应输出包含 `"protocol_version":1` 和 `"gpt-sovits-v2proplus"` 的 JSON；第二条命令应确认 v2ProPlus 权重完整。如果第一条提示找不到 `voice_pipeline`，在同一目录执行一次：
+第一条命令应输出包含 `"protocol_version":2`、`"gpt-sovits-v2proplus"` 和 `"infer"` 能力的 JSON；第二条命令应确认 v2ProPlus 权重完整。如果第一条提示找不到 `voice_pipeline`，在同一目录执行一次：
 
 ```powershell
 uv pip install --python $pipelinePython -e . --no-deps
@@ -238,12 +238,17 @@ Python：D:\Python_program_codes\TTS-Inference\.venv-gpt-sovits\Scripts\python.e
 
 ## 完整工作流
 
-1. 在“素材挖掘”中生成 `dataset.list`，完成后点击“继续训练”；也可以在训练页直接选择已有的 `dataset.list`。
-2. “项目目录”选择该目标人的数据目录。`dataset.list`、参考音频和输出目录都必须位于这个项目目录内；这是目标人之间隔离数据、缓存、任务和权重的边界。
+训练区始终保留“训练配置”“候选试听”“推理试验”三个页面。训练期间仍可修改配置，但修改只对下一次训练生效；训练、模型晋升和推理三种操作互斥，避免同时占用同一套 GPU 与任务日志。
+
+1. 在“素材挖掘”中生成 `dataset.list`，完成后点击“继续训练”；也可以在训练页直接选择已有训练数据。界面统一显示“训练数据”，具体是文件还是目录、允许哪些扩展名，由当前训练框架声明；GPT-SoVITS v2ProPlus 当前使用 `.list` 文件。
+2. “项目目录”选择该目标人的数据目录。训练数据、参考音频和输出目录都必须位于这个项目目录内；这是目标人之间隔离数据、缓存、任务和权重的边界。
 3. “项目名称”使用字母、数字、下划线或连字符，例如 `Acane`；选择 `cuda:0`、`fp16`，并勾选预处理、S2、S1、自动评测。
 4. 如果启用自动评测，选择项目目录内的参考音频，填写与音频一致的参考文本并选择对应语言。确认高级参数后点击“开始”。
 5. 预处理、S1、S2、评测等阶段状态会显示在训练页；S1/S2 显示模块上报的实际进度。错误、协议异常和子进程输出会立即进入错误区和 Activity 日志。
 6. 自动评测完成后，候选页只展示 `A`、`B`、`C`。每个候选提供中文、日文、英文试听；必须人工确认后才能晋升最终模型。
+7. 未晋升候选前，“推理试验”允许提前填写文本或 TXT 路径，但不会启用生成按钮。人工晋升成功后才会解锁；应用重启或切换回来时，会从当前项目最近 30 个任务中恢复严格匹配当前模块、框架和目标人的最新有效晋升模型。
+8. 推理文字可以直接输入，也可以选择一个 UTF-8 `.txt` 文件，两者必须二选一。语言需要明确选择中文、日文、英文或混合语言；推理时可选择 `cuda:0` 或 CPU。
+9. 推理完成后可直接试听或打开保存目录，界面会短暂提示实际路径。默认输出为 `<项目目录>/outputs/<项目名称>/gui/YYYYMMDD-HHMMSS.wav`；同一秒发生重名时自动追加 `-2`、`-3`，不会覆盖已有结果。
 
 每次 GUI 任务的协议快照、事件和日志保存在所选目标人项目的 `jobs/<job_id>/` 下。训练模块自身的阶段缓存和 checkpoint 仍由训练项目管理；失败后使用相同目标人项目和输入重新启动，模块可按其状态继续。当前 GUI 不会自动删除失败任务、试听候选或训练输出。
 
