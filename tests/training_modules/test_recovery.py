@@ -201,3 +201,44 @@ def test_wrong_event_protocol_or_job_id_cannot_complete_promotion(
     events.write_text(lines[0] + "\n" + json.dumps(completed) + "\n", encoding="utf-8")
 
     assert _recover(project) is None
+
+
+def test_returns_latest_matching_failed_job_and_stage(tmp_path):
+    from tts_builder.training_modules.recovery import FailedJob, latest_failed_job
+
+    project = tmp_path / PROJECT_NAME
+    job, events = _job(
+        project,
+        "failed-job",
+        overrides={
+            "output_root": str((project / "runs").resolve()),
+            "stages": ["preprocess", "s2", "s1", "evaluate"],
+        },
+    )
+    events.write_text("{}\n", encoding="utf-8")
+    state = project / "runs" / PROJECT_NAME / "pipeline-state.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "identity": {
+                    "pipeline": (job.parent / "module" / "pipeline.yaml").resolve().as_posix(),
+                    "config": (job.parent / "module" / "train.yaml").resolve().as_posix(),
+                    "stages": ["preprocess", "s2", "s1", "evaluate"],
+                },
+                "stages": {
+                    "preprocess": "completed",
+                    "s2": "completed",
+                    "s1": "completed",
+                    "evaluate": "failed",
+                },
+                "failure": {"stage": "evaluate", "type": "OSError", "message": "failed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert latest_failed_job(project, MODULE, FRAMEWORK, PROJECT_NAME) == FailedJob(
+        job.resolve(), "evaluate"
+    )

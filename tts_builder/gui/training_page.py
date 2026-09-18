@@ -16,7 +16,11 @@ from ..training_modules.inference import (
 from ..training_modules.artifacts import load_listening_manifest
 from ..training_modules.models import ModuleEvent
 from ..training_modules.process import ModuleProcessController
-from ..training_modules.recovery import latest_promoted_model
+from ..training_modules.recovery import (
+    FailedJob,
+    latest_failed_job,
+    latest_promoted_model,
+)
 from .i18n import LocaleController, Translator
 from .candidate_page import CandidatePage
 from .inference_page import InferenceInput, InferencePage
@@ -36,6 +40,7 @@ class TrainingPage(QWidget):
         build_job: Callable[..., Path] = default_build_job,
         build_inference_request: Callable[..., Path] = default_build_inference_request,
         recover_promoted_model: Callable[..., Path | None] = latest_promoted_model,
+        recover_failed_job: Callable[..., FailedJob | None] = latest_failed_job,
         process_factory: Callable[..., object] = ModuleProcessController,
     ) -> None:
         super().__init__(parent)
@@ -45,6 +50,7 @@ class TrainingPage(QWidget):
         self._build_job = build_job
         self._build_inference_request = build_inference_request
         self._recover_model = recover_promoted_model
+        self._recover_failed = recover_failed_job
         self._process_factory = process_factory
         self.process = None
         self.job_path: Path | None = None
@@ -52,6 +58,7 @@ class TrainingPage(QWidget):
         self._running = False
         self._operation = "run"
         self._pending_promoted_model: Path | None = None
+        self.failed_job: FailedJob | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 24, 30, 24)
@@ -85,9 +92,11 @@ class TrainingPage(QWidget):
         self.status.setStyleSheet(f"color:{MUTED}")
         self.stop_button = QPushButton()
         self.stop_button.setObjectName("Danger")
+        self.retry_button = QPushButton()
         self.start_button = QPushButton()
         self.start_button.setObjectName("Primary")
         actions.addWidget(self.status, 1)
+        actions.addWidget(self.retry_button)
         actions.addWidget(self.stop_button)
         actions.addWidget(self.start_button)
         config_layout.addLayout(actions)
@@ -123,6 +132,7 @@ class TrainingPage(QWidget):
         )
         self.start_button.clicked.connect(self._start)
         self.stop_button.clicked.connect(self._stop)
+        self.retry_button.clicked.connect(self._retry_failed)
         self.candidate_page.promotion_requested.connect(self._promote)
         self.inference_page.inference_requested.connect(self._infer)
         locale_controller.locale_changed.connect(self._locale_changed)
@@ -146,6 +156,7 @@ class TrainingPage(QWidget):
         for index, tab_id in enumerate(self._tab_ids):
             self.tabs.setTabText(index, translator.text(f"training.tab.{tab_id}"))
         self.start_button.setText(translator.text("training.start"))
+        self._update_retry_button()
         self.stop_button.setText(translator.text("actions.stop"))
         self.activity_panel.retranslate_ui(translator)
         self.next_run_hint.setText(translator.text("training.next_run_hint"))
@@ -188,6 +199,29 @@ class TrainingPage(QWidget):
         if self.process is not None:
             self.process.request_stop()
             self.status.setText(self.translator.text("status.stopping"))
+
+    def _retry_failed(self) -> None:
+        failed = self.failed_job
+        if failed is None or not failed.job_path.is_file():
+            self._recover_promoted_model()
+            return
+        try:
+            setting, _, _ = self.form.selection()
+            if setting is None:
+                raise ValueError(self.translator.text("training.module_unavailable"))
+            self.job_path = failed.job_path
+            self.active_selection = None
+            process = self._process_factory(setting)
+            self.attach_process(process)
+            self._operation = "run"
+            self.error_summary.hide()
+            self.progress_card.show()
+            self._set_running(True)
+            process.start(self.job_path)
+            self.status.setText(self.translator.text("training.running"))
+        except Exception as error:
+            self._set_running(False)
+            self._show_error(str(error))
 
     def _event(self, event: ModuleEvent) -> None:
         self.progress_card.show()
@@ -271,6 +305,7 @@ class TrainingPage(QWidget):
         self.form.setEnabled(True)
         self.stop_button.setEnabled(running)
         self.start_button.setEnabled(not running and self.form.is_valid())
+        self.retry_button.setEnabled(not running and self.failed_job is not None)
         self.next_run_hint.setVisible(running)
         self.candidate_page.set_busy(running)
         self.inference_page.set_busy(running)
@@ -282,6 +317,8 @@ class TrainingPage(QWidget):
         if self._running:
             return
         self.inference_page.set_model(None)
+        self.failed_job = None
+        self._update_retry_button()
         project_name = self.form.project_name.text().strip()
         if not project_name:
             return
@@ -295,9 +332,23 @@ class TrainingPage(QWidget):
             model = self._recover_model(
                 project, module.module_id, framework.id, project_name
             )
+            self.failed_job = self._recover_failed(
+                project, module.module_id, framework.id, project_name
+            )
         except (OSError, ValueError):
             return
         self.inference_page.set_model(model)
+        self._update_retry_button()
+
+    def _update_retry_button(self) -> None:
+        failed = self.failed_job
+        self.retry_button.setVisible(failed is not None)
+        self.retry_button.setEnabled(not self._running and failed is not None)
+        if failed is not None:
+            stage = self.translator.text(f"training.stage.{failed.stage}")
+            self.retry_button.setText(
+                self.translator.text("training.retry_failed", stage=stage)
+            )
 
     def _locale_changed(self, locale: str) -> None:
         self.retranslate_ui(Translator(locale))

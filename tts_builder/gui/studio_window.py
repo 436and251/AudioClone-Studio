@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtGui import QResizeEvent
@@ -9,11 +10,12 @@ from PySide6.QtWidgets import (
 )
 
 from ..training_modules.models import ModuleDescriptor
+from ..training_modules.process import ModuleProcessController
 from .controller import TaskController
 from .dataset_page import DatasetPage
 from .i18n import LocaleController
 from .navigation import Navigation
-from .settings import AppSettings
+from .settings import AppSettings, normalize_model_root
 from .training_page import TrainingPage
 
 
@@ -38,7 +40,14 @@ class StudioWindow(QMainWindow):
             locale_controller=self.locale_controller,
             training_available=True,
         )
-        self.training_page = TrainingPage(self.bindings, self.locale_controller)
+        self.training_page = TrainingPage(
+            self.bindings,
+            self.locale_controller,
+            process_factory=partial(
+                ModuleProcessController,
+                model_root=normalize_model_root(settings.model_root),
+            ),
+        )
         self.pages.addWidget(self._scroll(self.dataset_page))
         self.pages.addWidget(self._scroll(self.training_page))
         self.navigation.selection_changed.connect(self.pages.setCurrentIndex)

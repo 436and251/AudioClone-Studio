@@ -452,3 +452,36 @@ def test_form_changes_do_not_recover_while_operation_is_running(tmp_path):
 
     assert calls == []
     page.close()
+
+
+def test_failed_job_can_be_retried_without_building_a_new_job(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+    from tts_builder.training_modules.recovery import FailedJob
+
+    app = create_application([])
+    process = FakeModuleProcess()
+    project, dataset = _project(tmp_path)
+    setting, module = _binding(tmp_path)
+    job = setting.project_root / "jobs" / "failed" / "job.json"
+    job.parent.mkdir(parents=True)
+    job.write_text("{}", encoding="utf-8")
+    builds = []
+    page = TrainingPage(
+        ((setting, module),),
+        LocaleController("zh_CN"),
+        build_job=lambda *args: builds.append(args),
+        recover_failed_job=lambda *args: FailedJob(job.resolve(), "evaluate"),
+        process_factory=lambda _setting: process,
+    )
+
+    page.prefill_dataset(dataset)
+    app.processEvents()
+
+    assert page.retry_button.isVisibleTo(page)
+    assert page.retry_button.text() == "↻  继续失败阶段：自动评测"
+    page.retry_button.click()
+
+    assert builds == []
+    assert process.started == [job.resolve()]
+    assert page.job_path == job.resolve()
+    page.close()

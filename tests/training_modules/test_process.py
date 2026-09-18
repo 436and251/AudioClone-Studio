@@ -95,6 +95,32 @@ def test_start_uses_explicit_interpreter_safe_paths_and_isolated_environment(
     controller.detach()
 
 
+def test_start_passes_audio_miner_model_caches_to_training_module(
+    tmp_path: Path, monkeypatch
+):
+    from tts_builder.training_modules.process import ModuleProcessController
+
+    create_application([])
+    setting = _setting(tmp_path)
+    job = _job(tmp_path)
+    model_root = tmp_path / "shared-models"
+    calls = []
+    monkeypatch.setenv("HF_HOME", "untrusted-parent-value")
+    monkeypatch.setenv("TORCH_HOME", "untrusted-parent-value")
+    controller = ModuleProcessController(
+        setting,
+        model_root=model_root,
+        popen=lambda command, **options: calls.append((command, options)) or FakeProcess(),
+    )
+
+    controller.start(job)
+
+    environment = calls[0][1]["env"]
+    assert environment["HF_HOME"] == str((model_root / "huggingface").resolve())
+    assert environment["TORCH_HOME"] == str((model_root / "torch").resolve())
+    controller.detach()
+
+
 def test_promote_uses_explicit_selection(tmp_path: Path):
     from tts_builder.training_modules.process import ModuleProcessController
 
@@ -258,6 +284,36 @@ def test_poll_decodes_utf8_split_across_reads(tmp_path: Path):
     controller._poll()
 
     assert "".join(diagnostics) == "█\n"
+
+
+def test_retry_reads_only_events_appended_after_launch(tmp_path: Path):
+    from tts_builder.training_modules.process import ModuleProcessController
+
+    create_application([])
+    job = _job(tmp_path)
+    journal = job.parent / "events.jsonl"
+    old = {
+        "protocol_version": 1,
+        "job_id": "job-1",
+        "type": "job_failed",
+        "timestamp": "2026-09-17T00:00:00+00:00",
+    }
+    journal.write_text(json.dumps(old) + "\n", encoding="utf-8")
+    process = FakeProcess()
+    controller = ModuleProcessController(
+        _setting(tmp_path), popen=lambda *_args, **_kwargs: process
+    )
+    events = []
+    controller.event_received.connect(events.append)
+
+    controller.start(job)
+    new = {**old, "type": "stage_started", "stage": "evaluate"}
+    with journal.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(new) + "\n")
+    controller._poll()
+
+    assert [event.type for event in events] == ["stage_started"]
+    controller.detach()
 
 
 def test_poll_bounds_stderr_work_and_reports_protocol_errors(tmp_path: Path):

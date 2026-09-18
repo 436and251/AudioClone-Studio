@@ -196,7 +196,7 @@ Export
 
 ## 推荐的环境边界
 
-AudioMiner 与训练模块使用各自的虚拟环境，避免 Torch、CUDA 和前端依赖互相污染。AudioMiner 只会用配置中的绝对 Python 路径启动训练子进程，不会把当前环境的 `PYTHONPATH`、`PYTHONHOME`、`HF_HOME` 或 `TORCH_HOME` 传给训练模块。
+AudioMiner 与训练模块使用各自的虚拟环境，避免 Torch、CUDA 和前端依赖互相污染。AudioMiner 只会用配置中的绝对 Python 路径启动训练子进程；`PYTHONPATH` 和 `PYTHONHOME` 不会传入，而模型设置中的共享 `HF_HOME` 与 `TORCH_HOME` 会显式传入，素材挖掘和训练因此复用同一份模型缓存。
 
 ## 首次接入 voice-pipeline
 

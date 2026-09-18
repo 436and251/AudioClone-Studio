@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import heapq
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from .event_store import EventStore
@@ -11,6 +12,13 @@ from .models import ModuleEvent
 MAX_JOBS = 30
 MAX_JOB_BYTES = 1024 * 1024
 MAX_JOURNAL_BYTES = 16 * 1024 * 1024
+_PIPELINE_STAGES = ("preprocess", "s2", "s1", "evaluate")
+
+
+@dataclass(frozen=True)
+class FailedJob:
+    job_path: Path
+    stage: str
 
 
 def latest_promoted_model(
@@ -38,6 +46,34 @@ def latest_promoted_model(
         model = _completed_model(journal, root, job_id)
         if model is not None:
             return model
+    return None
+
+
+def latest_failed_job(
+    project_root: Path,
+    module_id: str,
+    framework: str,
+    project_name: str,
+) -> FailedJob | None:
+    raw_root = Path(project_root)
+    if (
+        not raw_root.is_absolute()
+        or not raw_root.is_dir()
+        or not all(
+            isinstance(value, str) and value
+            for value in (module_id, framework, project_name)
+        )
+    ):
+        return None
+    root = raw_root.resolve()
+    for _, directory, job, _ in _candidate_jobs(root):
+        if _matching_job(
+            job, directory, root, module_id, framework, project_name
+        ) is None:
+            continue
+        failed = _failed_job(job, directory, root, project_name)
+        if failed is not None:
+            return failed
     return None
 
 
@@ -113,6 +149,53 @@ def _same_path(value: object, expected: Path) -> bool:
         return Path(value).resolve() == expected
     except OSError:
         return False
+
+
+def _failed_job(
+    job: Path, directory: Path, root: Path, project_name: str
+) -> FailedJob | None:
+    try:
+        payload = json.loads(job.read_text(encoding="utf-8", errors="strict"))
+        output_root = Path(payload["output_root"])
+        stages = payload["stages"]
+        if (
+            not output_root.is_absolute()
+            or not isinstance(stages, list)
+            or not stages
+            or any(stage not in _PIPELINE_STAGES for stage in stages)
+        ):
+            return None
+        output_root = output_root.resolve()
+        if output_root != root and not output_root.is_relative_to(root):
+            return None
+        run_dir = (output_root / project_name).resolve()
+        if not run_dir.is_relative_to(root):
+            return None
+        state_path = run_dir / "pipeline-state.json"
+        if state_path.stat().st_size > MAX_JOB_BYTES:
+            return None
+        state = json.loads(state_path.read_text(encoding="utf-8", errors="strict"))
+    except (KeyError, OSError, UnicodeError, json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(state, dict) or state.get("schema_version") != 1:
+        return None
+    identity = state.get("identity")
+    statuses = state.get("stages")
+    failure = state.get("failure")
+    if (
+        not isinstance(identity, dict)
+        or identity.get("stages") != stages
+        or not _same_path(identity.get("pipeline"), directory / "module" / "pipeline.yaml")
+        or not _same_path(identity.get("config"), directory / "module" / "train.yaml")
+        or not isinstance(statuses, dict)
+        or list(statuses) != stages
+        or not isinstance(failure, dict)
+    ):
+        return None
+    stage = failure.get("stage")
+    if not isinstance(stage, str) or statuses.get(stage) != "failed":
+        return None
+    return FailedJob(job, stage)
 
 
 def _completed_model(journal: Path, root: Path, job_id: str) -> Path | None:

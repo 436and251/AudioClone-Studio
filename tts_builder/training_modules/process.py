@@ -27,12 +27,14 @@ class ModuleProcessController(QObject):
         setting: TrainingModuleSetting,
         parent=None,
         *,
+        model_root: Path | None = None,
         popen: Callable[..., object] = subprocess.Popen,
         monotonic: Callable[[], float] = time.monotonic,
         force_kill_grace_seconds: float = 10,
     ) -> None:
         super().__init__(parent)
         self.setting = setting
+        self.model_root = None if model_root is None else Path(model_root).resolve()
         self._popen = popen
         self._monotonic = monotonic
         self._grace = force_kill_grace_seconds
@@ -109,6 +111,8 @@ class ModuleProcessController(QObject):
         self._event_store = EventStore(
             self._job_dir / "events.jsonl", project_root, expected_job_id=job_id
         )
+        if self._event_store.journal.exists():
+            self._event_store.offset = self._event_store.journal.stat().st_size
         self._stderr_path = _contained_output(self._job_dir, "module.stderr.log")
         stdout_path = _contained_output(self._job_dir, "module.stdout.log")
         self._stderr_offset = (
@@ -126,7 +130,7 @@ class ModuleProcessController(QObject):
             "shell": False,
             "stdout": self._stdout,
             "stderr": self._stderr,
-            "env": child_environment(),
+            "env": child_environment(self.model_root),
         }
         if os.name == "nt":
             options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
