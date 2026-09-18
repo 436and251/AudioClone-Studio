@@ -41,9 +41,7 @@ def build_inference_request(
     ):
         raise ValueError("project_name is invalid")
 
-    model = Path(promoted_model).resolve()
-    if not model.is_dir() or not model.is_relative_to(project):
-        raise ValueError("promoted model must be a directory inside project_root")
+    model = _validated_model(promoted_model, project)
     inline = text.strip() if isinstance(text, str) else ""
     source = Path(text_file).resolve() if text_file is not None else None
     if bool(inline) == bool(source):
@@ -63,14 +61,42 @@ def build_inference_request(
     if not isinstance(device, str) or not device.strip():
         raise ValueError("device must not be empty")
 
+    return _write_request(
+        job_dir,
+        project,
+        project_name,
+        model,
+        inline,
+        source_text,
+        language,
+        device.strip(),
+        now,
+    )
+
+
+def _validated_model(promoted_model: Path, project: Path) -> Path:
+    model = Path(promoted_model).resolve()
+    if not model.is_dir() or not model.is_relative_to(project):
+        raise ValueError("promoted model must be a directory inside project_root")
+    return model
+
+
+def _write_request(
+    job_dir: Path,
+    project: Path,
+    project_name: str,
+    model: Path,
+    inline: str,
+    source_text: str | None,
+    language: str,
+    device: str,
+    now: datetime,
+) -> Path:
     request_id = uuid4().hex
     request_dir = job_dir / "inference" / request_id
-    output = _available_output(
-        project / "outputs" / project_name / "gui", job_dir, now
-    )
     request = request_dir / "request.json"
     snapshot = request_dir / "input.txt" if source_text is not None else None
-    request_payload = {
+    payload = {
         "protocol_version": 2,
         "request_id": request_id,
         "project_root": str(project),
@@ -79,8 +105,12 @@ def build_inference_request(
         "text": inline or None,
         "text_file": str(snapshot.resolve()) if snapshot is not None else None,
         "language": language,
-        "device": device.strip(),
-        "output": str(output.resolve()),
+        "device": device,
+        "output": str(
+            _available_output(
+                project / "outputs" / project_name / "gui", job_dir, now
+            ).resolve()
+        ),
     }
     try:
         request_dir.mkdir(parents=True)
@@ -88,7 +118,7 @@ def build_inference_request(
             snapshot.write_text(source_text, encoding="utf-8")
         temporary = request_dir / ".request.json.tmp"
         temporary.write_text(
-            json.dumps(request_payload, ensure_ascii=False, indent=2) + "\n",
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
         temporary.replace(request)
