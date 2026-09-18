@@ -1,9 +1,9 @@
 APP_QSS = r"""
-* { font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; font-size: 13px; }
+* { font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; font-size: 14px; }
 QWidget { background: #121212; color: #FFFFFF; }
 QMainWindow, QDialog { background: #121212; }
 QLabel#Title { font-size: 28px; font-weight: 700; }
-QLabel#Subtitle { color: #B3B3B3; font-size: 14px; }
+QLabel#Subtitle { color: #B3B3B3; font-size: 15px; }
 QLabel#FieldChip {
     background: #242424;
     border: 1px solid #333333;
@@ -13,7 +13,7 @@ QLabel#FieldChip {
     color: #FFFFFF;
     font-weight: 500;
 }
-QFrame#Card { background: #181818; border: 1px solid #282828; border-radius: 14px; }
+QFrame#Card { background: #181818; border: 1px solid #282828; border-radius: 15px; }
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     background: #242424;
     border: 1px solid #333333;
@@ -95,7 +95,7 @@ QFrame#AdvancedGroup {
 
 QLabel#AdvancedGroupTitle {
     background: transparent;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
 }
 
@@ -121,7 +121,7 @@ QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
 
 QLabel#CandidatePlaceholderTitle {
     color: #FFFFFF;
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 700;
 }
 
@@ -130,7 +130,7 @@ QToolButton#IconButton {
     color: #FFFFFF;
     border: none;
     border-radius: 22px;
-    font-size: 18px;
+    font-size: 19px;
     font-weight: 700;
     min-width: 44px;
     min-height: 44px;
@@ -150,14 +150,14 @@ QToolButton#IconButton:pressed {
 
 QLabel#NavigationTitle {
     color: #B3B3B3;
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 700;
     padding: 0 8px 8px 8px;
 }
 
 QPushButton#NavigationButton {
     background: transparent;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     border: none;
     border-radius: 0;
