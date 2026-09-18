@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import heapq
+import json
+from pathlib import Path
+
+from .event_store import EventStore
+from .models import ModuleEvent
+
+
+MAX_JOBS = 30
+MAX_JOB_BYTES = 1024 * 1024
+MAX_JOURNAL_BYTES = 16 * 1024 * 1024
+
+
+def latest_promoted_model(
+    project_root: Path,
+    module_id: str,
+    framework: str,
+    project_name: str,
+) -> Path | None:
+    raw_root = Path(project_root)
+    if (
+        not raw_root.is_absolute()
+        or not raw_root.is_dir()
+        or not all(isinstance(value, str) and value for value in (
+            module_id, framework, project_name
+        ))
+    ):
+        return None
+    root = raw_root.resolve()
+    for _, directory, job, journal in _candidate_jobs(root):
+        job_id = _matching_job(
+            job, directory, root, module_id, framework, project_name
+        )
+        if job_id is None:
+            continue
+        model = _completed_model(journal, root, job_id)
+        if model is not None:
+            return model
+    return None
+
+
+def _candidate_jobs(root: Path) -> list[tuple[int, Path, Path, Path]]:
+    jobs = root / "jobs"
+    if not jobs.is_dir() or jobs.resolve().parent != root:
+        return []
+    candidates = []
+    try:
+        entries = jobs.iterdir()
+        for entry in entries:
+            try:
+                directory = entry.resolve()
+                if not entry.is_dir() or directory.parent != jobs.resolve():
+                    continue
+                job = directory / "job.json"
+                journal = directory / "events.jsonl"
+                if (
+                    not job.is_file()
+                    or not journal.is_file()
+                    or job.resolve().parent != directory
+                    or journal.resolve().parent != directory
+                ):
+                    continue
+                modified = max(job.stat().st_mtime_ns, journal.stat().st_mtime_ns)
+                candidates.append((modified, directory, job.resolve(), journal.resolve()))
+            except OSError:
+                continue
+    except OSError:
+        return []
+    return heapq.nlargest(MAX_JOBS, candidates, key=lambda item: item[0])
+
+
+def _matching_job(
+    job: Path,
+    directory: Path,
+    root: Path,
+    module_id: str,
+    framework: str,
+    project_name: str,
+) -> str | None:
+    try:
+        if job.stat().st_size > MAX_JOB_BYTES:
+            return None
+        payload = json.loads(job.read_text(encoding="utf-8", errors="strict"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    job_id = payload.get("job_id")
+    expected = {
+        "protocol_version": 2,
+        "module_id": module_id,
+        "framework": framework,
+        "project_name": project_name,
+        "project_root": str(root),
+        "job_dir": str(directory),
+    }
+    if (
+        not isinstance(job_id, str)
+        or not job_id
+        or job_id != directory.name
+        or any(payload.get(key) != value for key, value in expected.items())
+    ):
+        return None
+    return job_id
+
+
+def _completed_model(journal: Path, root: Path, job_id: str) -> Path | None:
+    try:
+        size = journal.stat().st_size
+    except OSError:
+        return None
+    if size > MAX_JOURNAL_BYTES:
+        return None
+    store = EventStore(journal, root, expected_job_id=job_id)
+    pending: Path | None = None
+    completed: list[Path] = []
+    while store.offset < size:
+        before = store.offset
+        batch = store.read_new()
+        for event in batch.events:
+            if event.type == "artifact":
+                pending = _promoted_artifact(event)
+            elif event.type == "promotion_completed" and pending is not None:
+                completed.append(pending)
+                pending = None
+            elif event.type == "promotion_failed":
+                pending = None
+        if store.offset == before:
+            break
+    return next((model for model in reversed(completed) if model.is_dir()), None)
+
+
+def _promoted_artifact(event: ModuleEvent) -> Path | None:
+    models = [
+        Path(str(artifact["path"]))
+        for artifact in event.artifacts
+        if artifact.get("type") == "promoted_model"
+    ]
+    return models[-1] if models else None

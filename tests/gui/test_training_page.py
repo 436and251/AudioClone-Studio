@@ -388,3 +388,62 @@ def test_promotion_unlocks_inference_and_audio_artifact_loads_result(tmp_path):
     ))
     assert page.inference_page.result == output.resolve()
     page.close()
+
+
+def test_idle_form_identity_recovers_and_relocks_promoted_model(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    setting, module = _binding(tmp_path)
+    primary = module.frameworks[0]
+    alternate = FrameworkDescriptor(
+        "alternate", "Alternate", primary.capabilities,
+        primary.training_data, primary.fields,
+    )
+    binding = setting, ModuleDescriptor(
+        module.protocol_version, module.module_id, module.module_version,
+        (primary, alternate),
+    )
+    project, dataset = _project(tmp_path)
+    model = project / "models" / "Acane"
+    model.mkdir(parents=True)
+    calls = []
+
+    def recover(*identity):
+        calls.append(identity)
+        expected = (project.resolve(), module.module_id, primary.id, "Acane")
+        return model if identity == expected else None
+
+    page = TrainingPage(
+        (binding,), LocaleController("en"), recover_promoted_model=recover,
+        process_factory=lambda _setting: pytest.fail("must not launch a process"),
+    )
+    page.prefill_dataset(dataset)
+    app.processEvents()
+
+    assert calls[-1] == (project.resolve(), module.module_id, primary.id, "Acane")
+    assert page.inference_page.model == model.resolve()
+
+    page.form.project_name.setText("Other")
+    assert page.inference_page.model is None
+    page.form.project_name.setText("Acane")
+    assert page.inference_page.model == model.resolve()
+    page.form.framework_combo.setCurrentIndex(1)
+    assert page.inference_page.model is None
+    page.close()
+
+
+def test_form_changes_do_not_recover_while_operation_is_running(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    create_application([])
+    calls = []
+    page = TrainingPage(
+        (_binding(tmp_path),), LocaleController("en"),
+        recover_promoted_model=lambda *args: calls.append(args),
+    )
+    page._set_running(True)
+    page.form.project_name.setText("Acane")
+
+    assert calls == []
+    page.close()

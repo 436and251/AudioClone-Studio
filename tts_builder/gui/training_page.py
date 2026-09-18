@@ -16,6 +16,7 @@ from ..training_modules.inference import (
 from ..training_modules.artifacts import load_listening_manifest
 from ..training_modules.models import ModuleEvent
 from ..training_modules.process import ModuleProcessController
+from ..training_modules.recovery import latest_promoted_model
 from .i18n import LocaleController, Translator
 from .candidate_page import CandidatePage
 from .inference_page import InferenceInput, InferencePage
@@ -33,6 +34,7 @@ class TrainingPage(QWidget):
         *,
         build_job: Callable[..., Path] = default_build_job,
         build_inference_request: Callable[..., Path] = default_build_inference_request,
+        recover_promoted_model: Callable[..., Path | None] = latest_promoted_model,
         process_factory: Callable[..., object] = ModuleProcessController,
     ) -> None:
         super().__init__(parent)
@@ -41,6 +43,7 @@ class TrainingPage(QWidget):
         self.translator = Translator(locale_controller.locale)
         self._build_job = build_job
         self._build_inference_request = build_inference_request
+        self._recover_model = recover_promoted_model
         self._process_factory = process_factory
         self.process = None
         self.job_path: Path | None = None
@@ -114,6 +117,11 @@ class TrainingPage(QWidget):
         config_layout.addStretch(1)
 
         self.form.validity_changed.connect(self._update_actions)
+        self.form.project_edit.textChanged.connect(self._recover_promoted_model)
+        self.form.project_name.textChanged.connect(self._recover_promoted_model)
+        self.form.framework_combo.currentIndexChanged.connect(
+            self._recover_promoted_model
+        )
         self.start_button.clicked.connect(self._start)
         self.stop_button.clicked.connect(self._stop)
         self.candidate_page.promotion_requested.connect(self._promote)
@@ -244,6 +252,7 @@ class TrainingPage(QWidget):
             if self._operation == "promote":
                 self._pending_promoted_model = None
         self._operation = "run"
+        self._recover_promoted_model()
 
     def _show_error(self, message: str) -> None:
         self.error_summary.setText(message)
@@ -266,6 +275,23 @@ class TrainingPage(QWidget):
 
     def _update_actions(self, *_):
         self.start_button.setEnabled(not self._running and self.form.is_valid())
+
+    def _recover_promoted_model(self, *_):
+        if self._running:
+            return
+        self.inference_page.set_model(None)
+        project = Path(self.form.project_edit.text())
+        project_name = self.form.project_name.text().strip()
+        if not project.is_absolute() or not project.is_dir() or not project_name:
+            return
+        try:
+            _, module, framework = self.form.selection()
+            model = self._recover_model(
+                project.resolve(), module.module_id, framework.id, project_name
+            )
+        except (OSError, ValueError):
+            return
+        self.inference_page.set_model(model)
 
     def _locale_changed(self, locale: str) -> None:
         self.retranslate_ui(Translator(locale))
