@@ -124,6 +124,7 @@ def test_training_page_builds_job_and_starts_selected_module(tmp_path):
     process = FakeModuleProcess()
     calls = []
     project, dataset = _project(tmp_path)
+    binding = _binding(tmp_path)
     job = project / "jobs" / "job-1" / "job.json"
     job.parent.mkdir(parents=True)
     job.write_text("{}", encoding="utf-8")
@@ -133,7 +134,7 @@ def test_training_page_builds_job_and_starts_selected_module(tmp_path):
         return job
 
     page = TrainingPage(
-        (_binding(tmp_path),), LocaleController("en"),
+        (binding,), LocaleController("en"),
         build_job=build, process_factory=lambda _setting: process,
     )
     page.prefill_dataset(dataset)
@@ -146,7 +147,7 @@ def test_training_page_builds_job_and_starts_selected_module(tmp_path):
     page.start_button.click()
 
     assert process.started == [job]
-    assert calls[0][0] == project.resolve()
+    assert calls[0][0] == binding[0].project_root.resolve()
     assert calls[0][4] == ("preprocess", "s2", "s1", "evaluate")
     assert calls[0][5] == dataset.resolve()
     page.close()
@@ -176,6 +177,9 @@ def test_training_workspace_has_three_fixed_localized_pages(tmp_path, locale, la
     assert page.config_page.isAncestorOf(page.form)
     assert page.config_page.isAncestorOf(page.progress)
     assert not page.candidate_page.isAncestorOf(page.form)
+    assert page.progress_card.isHidden()
+    assert not page.activity_panel.toggle.isChecked()
+    assert page.activity.isHidden()
     page.close()
 
 
@@ -186,6 +190,7 @@ def test_running_job_uses_snapshot_while_form_edits_apply_next_time(tmp_path):
     process = FakeModuleProcess()
     calls = []
     project, dataset = _project(tmp_path)
+    binding = _binding(tmp_path)
     job = project / "jobs" / "job-1" / "job.json"
     job.parent.mkdir(parents=True)
     job.write_text("{}", encoding="utf-8")
@@ -195,7 +200,7 @@ def test_running_job_uses_snapshot_while_form_edits_apply_next_time(tmp_path):
         return job
 
     page = TrainingPage(
-        (_binding(tmp_path),), LocaleController("en"),
+        (binding,), LocaleController("en"),
         build_job=build, process_factory=lambda _setting: process,
     )
     page.prefill_dataset(dataset)
@@ -405,13 +410,13 @@ def test_idle_form_identity_recovers_and_relocks_promoted_model(tmp_path):
         (primary, alternate),
     )
     project, dataset = _project(tmp_path)
-    model = project / "models" / "Acane"
+    model = setting.project_root / "models" / "Acane"
     model.mkdir(parents=True)
     calls = []
 
     def recover(*identity):
         calls.append(identity)
-        expected = (project.resolve(), module.module_id, primary.id, "Acane")
+        expected = (setting.project_root.resolve(), module.module_id, primary.id, "Acane")
         return model if identity == expected else None
 
     page = TrainingPage(
@@ -421,7 +426,9 @@ def test_idle_form_identity_recovers_and_relocks_promoted_model(tmp_path):
     page.prefill_dataset(dataset)
     app.processEvents()
 
-    assert calls[-1] == (project.resolve(), module.module_id, primary.id, "Acane")
+    assert calls[-1] == (
+        setting.project_root.resolve(), module.module_id, primary.id, "Acane"
+    )
     assert page.inference_page.model == model.resolve()
 
     page.form.project_name.setText("Other")

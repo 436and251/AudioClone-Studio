@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import sys
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -13,6 +14,7 @@ from .main_window import MainWindow
 from .settings import AppSettings, TrainingModuleSetting, apply_model_environment
 from .studio_window import StudioWindow
 from .styles import APP_QSS
+from .wheel_guard import install_wheel_guard
 from ..training_modules.models import ModuleDescriptor, ProbeResult
 from ..training_modules.probe import probe_module
 
@@ -21,11 +23,20 @@ def resource_path(relative_path: str) -> Path:
     return Path(__file__).resolve().parents[2] / relative_path
 
 
+def set_windows_app_id() -> None:
+    if sys.platform == "win32":
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "AudioCloneStudio.Desktop"
+        )
+
+
 def create_application(argv=None) -> QApplication:
+    set_windows_app_id()
     app = QApplication.instance() or QApplication(argv or sys.argv)
 
     app.setApplicationName("Voice Dataset Builder")
     app.setStyleSheet(APP_QSS)
+    install_wheel_guard(app)
 
     icon_path = resource_path("assets/app.ico")
     if icon_path.exists():

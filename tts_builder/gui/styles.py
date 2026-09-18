@@ -81,6 +81,18 @@ QToolButton#AdvancedToggle {
     font-weight: 600;
 }
 
+QWidget#AdvancedContent {
+    background: #202020;
+    border: none;
+    border-radius: 10px;
+}
+
+QLabel#CandidatePlaceholderTitle {
+    color: #FFFFFF;
+    font-size: 16px;
+    font-weight: 700;
+}
+
 QToolButton#IconButton {
     background: #2A2A2A;
     color: #FFFFFF;

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QTabWidget,
+    QFrame, QHBoxLayout, QLabel, QPushButton, QTabWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -20,6 +20,7 @@ from ..training_modules.recovery import latest_promoted_model
 from .i18n import LocaleController, Translator
 from .candidate_page import CandidatePage
 from .inference_page import InferenceInput, InferencePage
+from .log_panel import LogPanel
 from .styles import FAILED, MUTED
 from .training_form import ModuleBinding, TrainingForm, TrainingSelection
 from .training_progress import TrainingProgress
@@ -95,9 +96,9 @@ class TrainingPage(QWidget):
         self.next_run_hint.hide()
         config_layout.addWidget(self.next_run_hint)
 
-        progress_card = QFrame()
-        progress_card.setObjectName("Card")
-        progress_layout = QVBoxLayout(progress_card)
+        self.progress_card = QFrame()
+        self.progress_card.setObjectName("Card")
+        progress_layout = QVBoxLayout(self.progress_card)
         self.progress = TrainingProgress(self.translator)
         self.error_summary = QLabel()
         self.error_summary.setWordWrap(True)
@@ -105,19 +106,17 @@ class TrainingPage(QWidget):
         self.error_summary.hide()
         progress_layout.addWidget(self.progress)
         progress_layout.addWidget(self.error_summary)
-        config_layout.addWidget(progress_card)
+        config_layout.addWidget(self.progress_card)
+        self.progress_card.hide()
 
-        self.activity_label = QLabel()
-        self.activity = QPlainTextEdit()
-        self.activity.setReadOnly(True)
+        self.activity_panel = LogPanel(self.translator)
+        self.activity = self.activity_panel.view
         self.activity.setMaximumBlockCount(500)
         self.activity.setMaximumHeight(190)
-        config_layout.addWidget(self.activity_label)
-        config_layout.addWidget(self.activity)
+        config_layout.addWidget(self.activity_panel)
         config_layout.addStretch(1)
 
         self.form.validity_changed.connect(self._update_actions)
-        self.form.project_edit.textChanged.connect(self._recover_promoted_model)
         self.form.project_name.textChanged.connect(self._recover_promoted_model)
         self.form.framework_combo.currentIndexChanged.connect(
             self._recover_promoted_model
@@ -148,7 +147,7 @@ class TrainingPage(QWidget):
             self.tabs.setTabText(index, translator.text(f"training.tab.{tab_id}"))
         self.start_button.setText(translator.text("training.start"))
         self.stop_button.setText(translator.text("actions.stop"))
-        self.activity_label.setText(translator.text("logs.activity"))
+        self.activity_panel.retranslate_ui(translator)
         self.next_run_hint.setText(translator.text("training.next_run_hint"))
         self.form.retranslate_ui(translator)
         self.progress.retranslate_ui(translator)
@@ -176,6 +175,7 @@ class TrainingPage(QWidget):
             self.attach_process(process)
             self._operation = "run"
             self.error_summary.hide()
+            self.progress_card.show()
             self._set_running(True)
             process.start(self.job_path)
             self.status.setText(self.translator.text("training.running"))
@@ -190,6 +190,7 @@ class TrainingPage(QWidget):
             self.status.setText(self.translator.text("status.stopping"))
 
     def _event(self, event: ModuleEvent) -> None:
+        self.progress_card.show()
         self.progress.consume(event)
         message = _event_text(event)
         self._append_activity(f"{event.type} · {message}" if message else event.type)
@@ -255,6 +256,7 @@ class TrainingPage(QWidget):
         self._recover_promoted_model()
 
     def _show_error(self, message: str) -> None:
+        self.progress_card.show()
         self.error_summary.setText(message)
         self.error_summary.show()
         self.tabs.setCurrentIndex(0)
@@ -280,14 +282,18 @@ class TrainingPage(QWidget):
         if self._running:
             return
         self.inference_page.set_model(None)
-        project = Path(self.form.project_edit.text())
         project_name = self.form.project_name.text().strip()
-        if not project.is_absolute() or not project.is_dir() or not project_name:
+        if not project_name:
             return
         try:
-            _, module, framework = self.form.selection()
+            setting, module, framework = self.form.selection()
+            if setting is None:
+                return
+            project = Path(setting.project_root).resolve()
+            if not project.is_dir():
+                return
             model = self._recover_model(
-                project.resolve(), module.module_id, framework.id, project_name
+                project, module.module_id, framework.id, project_name
             )
         except (OSError, ValueError):
             return

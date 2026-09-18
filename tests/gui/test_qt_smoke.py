@@ -16,6 +16,44 @@ from tts_builder.gui.main_window import MainWindow
 from tts_builder.gui.settings import AppSettings
 
 
+def test_windows_app_id_is_stable(monkeypatch):
+    calls = []
+    shell32 = SimpleNamespace(
+        SetCurrentProcessExplicitAppUserModelID=calls.append
+    )
+    monkeypatch.setattr(gui_app.sys, "platform", "win32")
+    monkeypatch.setattr(gui_app.ctypes, "windll", SimpleNamespace(shell32=shell32))
+
+    gui_app.set_windows_app_id()
+
+    assert calls == ["AudioCloneStudio.Desktop"]
+
+
+def test_settings_combos_ignore_mouse_wheel(tmp_path):
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+    from tts_builder.gui.settings_dialog import SettingsDialog
+
+    create_application([])
+    dialog = SettingsDialog(
+        AppSettings(model_root=tmp_path / "models", output_root=tmp_path / "out")
+    )
+    widgets = (dialog.model, dialog.locale)
+    before = [widget.currentIndex() for widget in widgets]
+    for widget in widgets:
+        QApplication.sendEvent(
+            widget,
+            QWheelEvent(
+                QPointF(5, 5), QPointF(5, 5), QPoint(), QPoint(0, -120),
+                Qt.NoButton, Qt.NoModifier, Qt.ScrollUpdate, False,
+            ),
+        )
+
+    assert [widget.currentIndex() for widget in widgets] == before
+    dialog.close()
+
+
 class RecordingController(QObject):
     event_received = Signal(object)
     task_completed = Signal(object)
@@ -146,8 +184,8 @@ def test_settings_action_applies_accepted_values_to_the_live_window(tmp_path, mo
     window.close()
 
 
-def test_source_gui_uses_its_window_icon_without_packaged_shell_identity():
+def test_source_gui_uses_window_icon_and_stable_shell_identity():
     app = create_application([])
 
-    assert not hasattr(gui_app, "set_windows_app_id")
+    assert callable(gui_app.set_windows_app_id)
     assert app.windowIcon().isNull() is False

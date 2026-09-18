@@ -27,7 +27,7 @@ def build_job(
         raise ValueError("unsupported module protocol")
     if framework not in module.frameworks:
         raise ValueError("framework does not belong to module")
-    training_path = _training_data(training_data, framework, project_root)
+    training_path = _training_data(training_data, framework)
     if set(values) != _VALUE_KEYS:
         raise ValueError("job values must contain exactly the supported fields")
 
@@ -57,7 +57,7 @@ def build_job(
         "device": values["device"],
         "precision": values["precision"],
         "parameters": values["parameters"],
-        "reference": _reference(values["reference"], project_root),
+        "reference": _reference(values["reference"]),
         "job_dir": str(job_dir),
     }
     try:
@@ -95,19 +95,13 @@ def _contained_path(value: object, root: Path, name: str) -> Path:
     return resolved
 
 
-def _contained_file(path: Path, root: Path, name: str) -> Path:
-    resolved = _contained_path(path, root, name)
-    if not resolved.is_file():
-        raise ValueError(f"{name} must be an existing file")
-    return resolved
-
-
 def _training_data(
     path: Path,
     framework: FrameworkDescriptor,
-    root: Path,
 ) -> Path:
-    resolved = _contained_path(path, root, "training data")
+    resolved = Path(path).resolve()
+    if not Path(path).is_absolute():
+        raise ValueError("training data must be an absolute path")
     descriptor = framework.training_data
     if descriptor.kind == "directory":
         if not resolved.is_dir():
@@ -121,13 +115,16 @@ def _training_data(
     return resolved
 
 
-def _reference(value: object, root: Path) -> object:
+def _reference(value: object) -> object:
     if value is None:
         return None
     if not isinstance(value, Mapping) or set(value) != {"audio", "text", "language"}:
         raise ValueError("reference must contain audio, text, and language")
+    audio = Path(value["audio"])
+    if not audio.is_absolute() or not audio.is_file():
+        raise ValueError("reference audio must be an existing absolute file")
     return {
-        "audio": str(_contained_file(value["audio"], root, "reference audio")),
+        "audio": str(audio.resolve()),
         "text": value["text"],
         "language": value["language"],
     }

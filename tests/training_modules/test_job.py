@@ -98,11 +98,43 @@ def test_build_job_refuses_to_overwrite_existing_uuid_directory(tmp_path, monkey
     assert json.loads(first.read_text(encoding="utf-8"))["job_id"] == str(fixed)
 
 
-@pytest.mark.parametrize(
-    ("escaped", "message"),
-    [("dataset", "training data"), ("output", "output")],
-)
-def test_build_job_rejects_paths_outside_project(tmp_path, escaped, message):
+def test_build_job_accepts_external_training_data(tmp_path):
+    from tts_builder.training_modules.job import build_job
+
+    project, dataset = _project(tmp_path)
+    module, framework = _descriptors()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    dataset = outside / "dataset.list"
+    dataset.write_text("clip.wav|Acane|ja|test\n", encoding="utf-8")
+
+    path = build_job(
+        project, module, framework, _values(project), ("preprocess",), dataset
+    )
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["training_data"]["path"] == str(dataset.resolve())
+
+
+def test_build_job_accepts_external_reference_audio(tmp_path):
+    from tts_builder.training_modules.job import build_job
+
+    project, dataset = _project(tmp_path)
+    outside = tmp_path / "reference.wav"
+    outside.write_bytes(b"wav")
+    module, framework = _descriptors()
+    values = _values(project)
+    values["reference"] = {"audio": outside, "text": "test", "language": "en"}
+
+    path = build_job(
+        project, module, framework, values, ("preprocess", "evaluate"), dataset
+    )
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["reference"]["audio"] == str(outside.resolve())
+
+
+def test_build_job_still_rejects_output_outside_project(tmp_path):
     from tts_builder.training_modules.job import build_job
 
     project, dataset = _project(tmp_path)
@@ -110,31 +142,10 @@ def test_build_job_rejects_paths_outside_project(tmp_path, escaped, message):
     outside = tmp_path / "outside"
     outside.mkdir()
     values = _values(project)
-    if escaped == "dataset":
-        dataset = outside / "dataset.list"
-        dataset.write_text("outside", encoding="utf-8")
-    else:
-        values["output_root"] = outside / "runs"
+    values["output_root"] = outside / "runs"
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match="output"):
         build_job(project, module, framework, values, ("preprocess",), dataset)
-
-
-def test_build_job_rejects_dataset_symlink_escape(tmp_path):
-    from tts_builder.training_modules.job import build_job
-
-    project, _ = _project(tmp_path)
-    outside = tmp_path / "outside.list"
-    outside.write_text("outside", encoding="utf-8")
-    link = project / "dataset" / "linked.list"
-    try:
-        link.symlink_to(outside)
-    except OSError:
-        pytest.skip("symlinks are unavailable")
-    module, framework = _descriptors()
-
-    with pytest.raises(ValueError, match="training data"):
-        build_job(project, module, framework, _values(project), ("preprocess",), link)
 
 
 def test_build_job_accepts_directory_training_data(tmp_path):

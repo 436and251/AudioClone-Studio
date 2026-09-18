@@ -51,6 +51,7 @@ class CandidatePage(QWidget):
         self.player = player or AudioPlayer(self)
         self.candidates: tuple[ListeningCandidate, ...] = ()
         self.cards: list[CandidateCard] = []
+        self.placeholder_cards: list[QFrame] = []
         self._busy = False
 
         layout = QVBoxLayout(self)
@@ -76,6 +77,7 @@ class CandidatePage(QWidget):
         self._group.setExclusive(True)
         self._group.buttonToggled.connect(self._selection_changed)
         locale_controller.locale_changed.connect(self._locale_changed)
+        self.set_candidates(())
         self.retranslate_ui(self.translator)
 
     def set_candidates(self, candidates: tuple[ListeningCandidate, ...]) -> None:
@@ -89,11 +91,23 @@ class CandidatePage(QWidget):
         self._group.setExclusive(True)
         self._group.buttonToggled.connect(self._selection_changed)
         self.cards = []
+        self.placeholder_cards = []
         for candidate in self.candidates:
             card = self._card(candidate)
             self.cards.append(card)
             self._group.addButton(card.select)
             self.cards_layout.addWidget(card.widget, 1)
+        if not self.candidates:
+            for letter in "ABC":
+                frame = QFrame()
+                frame.setObjectName("Card")
+                placeholder_layout = QVBoxLayout(frame)
+                label = QLabel(letter)
+                label.setObjectName("CandidatePlaceholderTitle")
+                placeholder_layout.addWidget(label)
+                placeholder_layout.addStretch(1)
+                self.placeholder_cards.append(frame)
+                self.cards_layout.addWidget(frame, 1)
         self.empty_hint.setVisible(not self.candidates)
         self.set_busy(self._busy)
 

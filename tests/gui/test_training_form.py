@@ -56,13 +56,14 @@ def test_descriptor_form_maps_fields_and_preserves_canonical_stages(tmp_path):
     from tts_builder.gui.training_form import TrainingForm
 
     create_application([])
-    form = TrainingForm((_binding(tmp_path),), Translator("en"))
+    binding = _binding(tmp_path)
+    form = TrainingForm((binding,), Translator("en"))
     project, dataset = _project(tmp_path)
     form.prefill_dataset(dataset)
     reference = project / "reference.wav"
     reference.write_bytes(b"wav")
     form.reference_audio.setText(str(reference))
-    form.advanced_fields["resource"].setText(str(project))
+    form.advanced_fields["resource"].setText(str(binding[0].project_root))
 
     assert isinstance(form.advanced_fields["steps"], QSpinBox)
     assert isinstance(form.advanced_fields["rate"], QDoubleSpinBox)
@@ -83,19 +84,21 @@ def test_descriptor_form_maps_fields_and_preserves_canonical_stages(tmp_path):
     assert not form.is_valid()
 
 
-def test_prefill_uses_existing_dataset_without_copying_it(tmp_path):
+def test_prefill_uses_external_dataset_and_bound_module_output(tmp_path):
     from tts_builder.gui.training_form import TrainingForm
 
     create_application([])
-    form = TrainingForm((_binding(tmp_path),), Translator("zh_CN"))
+    binding = _binding(tmp_path)
+    form = TrainingForm((binding,), Translator("zh_CN"))
     project, dataset = _project(tmp_path)
 
     form.prefill_dataset(dataset)
 
     assert Path(form.dataset_edit.text()) == dataset.resolve()
-    assert Path(form.project_edit.text()) == project.resolve()
-    assert Path(form.output_edit.text()) == (project / "runs").resolve()
+    assert not hasattr(form, "project_edit")
+    assert Path(form.output_edit.text()) == (binding[0].project_root / "runs").resolve()
     assert form.project_name.text() == "Acane"
+    assert form.is_valid() is False  # evaluation still needs a reference audio
 
 
 @pytest.mark.parametrize(
@@ -150,7 +153,6 @@ def test_training_data_browse_and_validation_follow_descriptor(tmp_path, monkeyp
     assert form.training_data_path().suffix == ".list"
 
     form.framework_combo.setCurrentIndex(1)
-    form.project_edit.setText(str(tmp_path.resolve()))
     form._browse_dataset()
     assert calls == ["file", "directory"]
     assert form.training_data_path() == directory.resolve()
@@ -161,7 +163,8 @@ def test_advanced_settings_start_closed_and_toggle_without_bottom_border(tmp_pat
     from tts_builder.gui.training_form import TrainingForm
 
     create_application([])
-    form = TrainingForm((_binding(tmp_path),), Translator("en"))
+    binding = _binding(tmp_path)
+    form = TrainingForm((binding,), Translator("en"))
 
     assert form.advanced_toggle.isCheckable()
     assert not form.advanced_toggle.isChecked()
@@ -171,8 +174,29 @@ def test_advanced_settings_start_closed_and_toggle_without_bottom_border(tmp_pat
 
     form.advanced_toggle.click()
     assert not form.advanced_content.isHidden()
+    assert form.advanced_content.objectName() == "AdvancedContent"
     block = APP_QSS.split("QToolButton#AdvancedToggle", 1)[1].split("}", 1)[0]
     assert "border-bottom" not in block
+    advanced = APP_QSS.split("QWidget#AdvancedContent", 1)[1].split("}", 1)[0]
+    assert "border-radius" in advanced
+    assert "background" in advanced
+
+
+def test_short_training_fields_share_rows(tmp_path):
+    from tts_builder.gui.training_form import TrainingForm
+
+    create_application([])
+    form = TrainingForm((_binding(tmp_path),), Translator("en"))
+
+    assert form.common_layout.indexOf(form.framework_combo) >= 0
+    assert form.common_layout.indexOf(form.project_name) >= 0
+    assert form.common_layout.indexOf(form.device) >= 0
+    assert form.common_layout.indexOf(form.precision) >= 0
+    assert form.common_layout.getItemPosition(
+        form.common_layout.indexOf(form.device)
+    )[0] == form.common_layout.getItemPosition(
+        form.common_layout.indexOf(form.precision)
+    )[0]
 
 
 def test_combo_and_spin_wheels_scroll_page_without_changing_values(tmp_path):
@@ -238,17 +262,18 @@ def test_snapshot_is_a_frozen_start_time_selection(tmp_path):
     from tts_builder.gui.training_form import TrainingForm
 
     create_application([])
-    form = TrainingForm((_binding(tmp_path),), Translator("en"))
+    binding = _binding(tmp_path)
+    form = TrainingForm((binding,), Translator("en"))
     project, dataset = _project(tmp_path)
     form.prefill_dataset(dataset)
     reference = project / "reference.wav"
     reference.write_bytes(b"wav")
     form.reference_audio.setText(str(reference))
-    form.advanced_fields["resource"].setText(str(project))
+    form.advanced_fields["resource"].setText(str(binding[0].project_root))
 
     snapshot = form.snapshot()
 
-    assert snapshot.project_dir == project.resolve()
+    assert snapshot.project_dir == binding[0].project_root.resolve()
     assert snapshot.training_data == dataset.resolve()
     assert snapshot.values["project_name"] == "Acane"
     assert snapshot.values["parameters"]["steps"] == 10

@@ -5,12 +5,11 @@ from pathlib import Path
 import re
 from typing import Sequence
 
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QWheelEvent
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractScrollArea, QAbstractSpinBox, QApplication, QCheckBox, QComboBox,
-    QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QSpinBox, QToolButton, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGridLayout,
+    QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QToolButton,
+    QVBoxLayout, QWidget,
 )
 
 from ..training_modules.models import FieldDescriptor, FrameworkDescriptor, ModuleDescriptor
@@ -34,28 +33,6 @@ class TrainingSelection:
     training_data: Path
 
 
-class _WheelGuard(QObject):
-    def eventFilter(self, watched, event) -> bool:
-        if event.type() != QEvent.Wheel:
-            return False
-        parent = watched.parentWidget()
-        while parent is not None and not isinstance(parent, QAbstractScrollArea):
-            parent = parent.parentWidget()
-        if parent is not None:
-            forwarded = QWheelEvent(
-                event.position(),
-                event.globalPosition(),
-                event.pixelDelta(),
-                event.angleDelta(),
-                event.buttons(),
-                event.modifiers(),
-                event.phase(),
-                event.inverted(),
-            )
-            QApplication.sendEvent(parent.viewport(), forwarded)
-        return True
-
-
 class TrainingForm(QWidget):
     validity_changed = Signal(bool)
 
@@ -71,14 +48,16 @@ class TrainingForm(QWidget):
         self.advanced_fields: dict[str, QWidget] = {}
         self._field_descriptors: dict[str, FieldDescriptor] = {}
         self._advanced_labels: dict[str, QLabel] = {}
-        self._wheel_guard = _WheelGuard(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        common = QFormLayout()
+        self.common_layout = QGridLayout()
+        self.common_layout.setHorizontalSpacing(12)
+        self.common_layout.setVerticalSpacing(10)
+        self.common_layout.setColumnStretch(1, 1)
+        self.common_layout.setColumnStretch(3, 1)
         self.framework_label = QLabel()
         self.project_name_label = QLabel()
-        self.project_label = QLabel()
         self.dataset_label = QLabel()
         self.output_label = QLabel()
         self.device_label = QLabel()
@@ -95,26 +74,27 @@ class TrainingForm(QWidget):
                     framework.display_name, (binding_index, framework_index)
                 )
         self.project_name = QLineEdit()
-        self.project_edit = QLineEdit()
         self.dataset_edit = QLineEdit()
         self.output_edit = QLineEdit()
+        self.output_edit.setReadOnly(True)
         self.device = QComboBox()
         self.device.addItems(["cuda:0", "cpu"])
         self.precision = QComboBox()
         self.precision.addItems(["fp16", "fp32"])
-        common.addRow(self.framework_label, self.framework_combo)
-        common.addRow(self.project_name_label, self.project_name)
-        common.addRow(
-            self.project_label, self._path_row(self.project_edit, self._browse_project)
+        self.common_layout.addWidget(self.framework_label, 0, 0)
+        self.common_layout.addWidget(self.framework_combo, 0, 1)
+        self.common_layout.addWidget(self.project_name_label, 0, 2)
+        self.common_layout.addWidget(self.project_name, 0, 3)
+        self.common_layout.addWidget(self.dataset_label, 1, 0)
+        self.common_layout.addWidget(
+            self._path_row(self.dataset_edit, self._browse_dataset), 1, 1, 1, 3
         )
-        common.addRow(
-            self.dataset_label, self._path_row(self.dataset_edit, self._browse_dataset)
-        )
-        common.addRow(
-            self.output_label, self._path_row(self.output_edit, self._browse_output)
-        )
-        common.addRow(self.device_label, self.device)
-        common.addRow(self.precision_label, self.precision)
+        self.common_layout.addWidget(self.output_label, 2, 0)
+        self.common_layout.addWidget(self.output_edit, 2, 1, 1, 3)
+        self.common_layout.addWidget(self.device_label, 3, 0)
+        self.common_layout.addWidget(self.device, 3, 1)
+        self.common_layout.addWidget(self.precision_label, 3, 2)
+        self.common_layout.addWidget(self.precision, 3, 3)
 
         stages = QWidget()
         stage_layout = QHBoxLayout(stages)
@@ -124,20 +104,23 @@ class TrainingForm(QWidget):
             box.setChecked(True)
             stage_layout.addWidget(box)
         stage_layout.addStretch(1)
-        common.addRow(self.stages_label, stages)
+        self.common_layout.addWidget(self.stages_label, 4, 0)
+        self.common_layout.addWidget(stages, 4, 1, 1, 3)
 
         self.reference_audio = QLineEdit()
         self.reference_text = QLineEdit()
         self.reference_language = QComboBox()
         for language in ("ja", "zh", "en"):
             self.reference_language.addItem("", language)
-        common.addRow(
-            self.reference_label,
-            self._path_row(self.reference_audio, self._browse_reference),
+        self.common_layout.addWidget(self.reference_label, 5, 0)
+        self.common_layout.addWidget(
+            self._path_row(self.reference_audio, self._browse_reference), 5, 1, 1, 3
         )
-        common.addRow(self.reference_text_label, self.reference_text)
-        common.addRow(self.reference_language_label, self.reference_language)
-        layout.addLayout(common)
+        self.common_layout.addWidget(self.reference_text_label, 6, 0)
+        self.common_layout.addWidget(self.reference_text, 6, 1)
+        self.common_layout.addWidget(self.reference_language_label, 6, 2)
+        self.common_layout.addWidget(self.reference_language, 6, 3)
+        layout.addLayout(self.common_layout)
 
         self.advanced_toggle = QToolButton()
         self.advanced_toggle.setObjectName("AdvancedToggle")
@@ -146,23 +129,17 @@ class TrainingForm(QWidget):
         self.advanced_toggle.setArrowType(Qt.RightArrow)
         layout.addWidget(self.advanced_toggle)
         self.advanced_content = QWidget()
+        self.advanced_content.setObjectName("AdvancedContent")
         self.advanced_layout = QFormLayout(self.advanced_content)
+        self.advanced_layout.setContentsMargins(12, 12, 12, 12)
         self.advanced_content.hide()
         layout.addWidget(self.advanced_content)
-
-        for widget in (
-            self.framework_combo,
-            self.device,
-            self.precision,
-            self.reference_language,
-        ):
-            widget.installEventFilter(self._wheel_guard)
 
         self.framework_combo.currentIndexChanged.connect(self._framework_changed)
         self.advanced_toggle.toggled.connect(self._toggle_advanced)
         for edit in (
-            self.project_name, self.project_edit, self.dataset_edit, self.output_edit,
-            self.reference_audio, self.reference_text,
+            self.project_name, self.dataset_edit, self.reference_audio,
+            self.reference_text,
         ):
             edit.textChanged.connect(self._changed)
         for combo in (self.device, self.precision, self.reference_language):
@@ -196,11 +173,13 @@ class TrainingForm(QWidget):
 
     def snapshot(self) -> TrainingSelection:
         setting, module, framework = self.selection()
+        if setting is None:
+            raise ValueError("training module is unavailable")
         return TrainingSelection(
             setting=setting,
             module=module,
             framework=framework,
-            project_dir=Path(self.project_edit.text()).resolve(),
+            project_dir=Path(setting.project_root).resolve(),
             values=self.values(),
             stages=self.selected_stages(),
             training_data=self.training_data_path(),
@@ -230,21 +209,22 @@ class TrainingForm(QWidget):
         if not self.bindings or self.framework_combo.currentIndex() < 0:
             return False
         setting, _, framework = self.selection()
-        project = Path(self.project_edit.text())
+        if setting is None:
+            return False
+        project = Path(setting.project_root)
         training_data = Path(self.dataset_edit.text())
         output = Path(self.output_edit.text())
         if (
-            setting is None
-            or _PROJECT_NAME.fullmatch(self.project_name.text().strip()) is None
+            _PROJECT_NAME.fullmatch(self.project_name.text().strip()) is None
             or not project.is_absolute()
             or not project.is_dir()
-            or not _valid_training_data(training_data, project, framework)
+            or not _valid_training_data(training_data, framework)
             or not _contained_path(output, project)
             or not self.selected_stages()
         ):
             return False
-        if self.stage_boxes["evaluate"].isChecked() and not _contained_file(
-            Path(self.reference_audio.text()), project
+        if self.stage_boxes["evaluate"].isChecked() and not _existing_file(
+            Path(self.reference_audio.text())
         ):
             return False
         return all(
@@ -255,18 +235,15 @@ class TrainingForm(QWidget):
 
     def prefill_dataset(self, path: Path) -> None:
         dataset = Path(path).resolve()
-        project = dataset.parent
         self.dataset_edit.setText(str(dataset))
-        self.project_edit.setText(str(project))
-        self.output_edit.setText(str((project / "runs").resolve()))
-        self.project_name.setText(project.name)
+        self.project_name.setText(dataset.parent.name)
+        self._sync_output_root()
 
     def retranslate_ui(self, translator: Translator) -> None:
         self.translator = translator
         labels = {
             self.framework_label: "training.framework",
             self.project_name_label: "training.project_name",
-            self.project_label: "training.project_dir",
             self.dataset_label: "training.dataset",
             self.output_label: "training.output",
             self.device_label: "training.device",
@@ -297,6 +274,7 @@ class TrainingForm(QWidget):
             self._changed()
             return
         _, _, framework = self.selection()
+        self._sync_output_root()
         available = set()
         if "preprocess" in framework.capabilities:
             available.add("preprocess")
@@ -315,8 +293,6 @@ class TrainingForm(QWidget):
             self._field_descriptors[descriptor.key] = descriptor
             self._advanced_labels[descriptor.key] = label
             self.advanced_layout.addRow(label, widget)
-            if isinstance(widget, (QComboBox, QAbstractSpinBox)):
-                widget.installEventFilter(self._wheel_guard)
             _connect_change(widget, self._changed)
         self._changed()
 
@@ -329,16 +305,14 @@ class TrainingForm(QWidget):
     def _changed(self, *_):
         self.validity_changed.emit(self.is_valid())
 
-    def _browse_project(self):
-        self._choose_directory(self.project_edit)
-
-    def _browse_output(self):
-        self._choose_directory(self.output_edit)
-
-    def _choose_directory(self, edit: QLineEdit):
-        path = QFileDialog.getExistingDirectory(self, "", edit.text())
-        if path:
-            edit.setText(path)
+    def _sync_output_root(self) -> None:
+        if not self.bindings or self.framework_combo.currentIndex() < 0:
+            self.output_edit.clear()
+            return
+        setting, _, _ = self.selection()
+        self.output_edit.setText(
+            str((Path(setting.project_root) / "runs").resolve()) if setting else ""
+        )
 
     def _browse_dataset(self):
         _, _, framework = self.selection()
@@ -425,16 +399,15 @@ def _contained_path(path: Path, root: Path) -> bool:
     return resolved == root or resolved.is_relative_to(root)
 
 
-def _contained_file(path: Path, root: Path) -> bool:
-    return _contained_path(path, root) and path.resolve().is_file()
+def _existing_file(path: Path) -> bool:
+    return path.is_absolute() and path.resolve().is_file()
 
 
 def _valid_training_data(
     path: Path,
-    root: Path,
     framework: FrameworkDescriptor,
 ) -> bool:
-    if not _contained_path(path, root):
+    if not path.is_absolute():
         return False
     descriptor = framework.training_data
     resolved = path.resolve()

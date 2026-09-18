@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QLabel, QMessageBox
 
 from tts_builder.gui.app import create_application
 from tts_builder.gui.i18n import LocaleController
@@ -120,5 +120,7 @@ def test_candidate_page_shows_localized_empty_state(locale, hint):
     assert page.empty_hint.text() == hint
     assert page.empty_hint.isVisibleTo(page)
     assert page.cards == []
+    assert len(page.placeholder_cards) == 3
+    assert [card.findChild(QLabel).text() for card in page.placeholder_cards] == ["A", "B", "C"]
     assert not page.promote_button.isEnabled()
     page.close()
