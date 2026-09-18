@@ -114,6 +114,53 @@ def test_promote_uses_explicit_selection(tmp_path: Path):
     controller.detach()
 
 
+def test_infer_uses_request_path_and_same_isolated_process_guard(tmp_path: Path):
+    from tts_builder.training_modules.process import ModuleProcessController
+
+    create_application([])
+    setting = _setting(tmp_path)
+    job = _job(tmp_path)
+    request = job.parent / "inference" / "request-1" / "request.json"
+    request.parent.mkdir(parents=True)
+    request.write_text("{}", encoding="utf-8")
+    calls = []
+    process = FakeProcess()
+    controller = ModuleProcessController(
+        setting,
+        popen=lambda command, **options: calls.append((command, options)) or process,
+    )
+
+    controller.infer(request)
+
+    assert calls[0][0] == [
+        str(setting.python_executable.resolve()),
+        "-m",
+        "voice_pipeline",
+        "module",
+        "infer",
+        "--request",
+        str(request.resolve()),
+        "--events-jsonl",
+    ]
+    with pytest.raises(RuntimeError, match="already running"):
+        controller.start(job)
+    assert Path(calls[0][1]["stdout"].name).parent == job.parent.resolve()
+    controller.detach()
+
+
+def test_infer_rejects_missing_request_before_launch(tmp_path: Path):
+    from tts_builder.training_modules.process import ModuleProcessController
+
+    create_application([])
+    calls = []
+    controller = ModuleProcessController(
+        _setting(tmp_path), popen=lambda *args, **kwargs: calls.append(args)
+    )
+    with pytest.raises(ValueError, match="unavailable"):
+        controller.infer(tmp_path / "missing" / "request.json")
+    assert calls == []
+
+
 def test_cooperative_stop_force_kill_grace_and_detach(tmp_path: Path):
     from tts_builder.training_modules.process import ModuleProcessController
 

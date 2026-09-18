@@ -48,12 +48,25 @@ class ModuleProcessController(QObject):
         self._timer.timeout.connect(self._poll)
 
     def start(self, job_path: Path) -> None:
-        self._launch(job_path, ("run",))
+        job = Path(job_path).resolve()
+        self._launch(job, ("run", "--job", str(job)))
 
     def promote(self, job_path: Path, selection: str) -> None:
         if not selection:
             raise ValueError("selection must not be empty")
-        self._launch(job_path, ("promote", "--selection", selection))
+        job = Path(job_path).resolve()
+        self._launch(
+            job, ("promote", "--job", str(job), "--selection", selection)
+        )
+
+    def infer(self, request_path: Path) -> None:
+        request = Path(request_path).resolve()
+        if not request.is_file():
+            raise ValueError("inference request is unavailable")
+        job = request.parent.parent.parent / "job.json"
+        if request.name != "request.json" or request.parent.parent.name != "inference":
+            raise ValueError("inference request path is invalid")
+        self._launch(job, ("infer", "--request", str(request)))
 
     def request_stop(self) -> None:
         if self._job_dir is None:
@@ -100,8 +113,8 @@ class ModuleProcessController(QObject):
         self._stdout = stdout_path.open("ab")
         self._stderr = self._stderr_path.open("ab")
         command = [
-            str(python), "-m", self.setting.module_name, "module", action[0],
-            "--job", str(job), *action[1:], "--events-jsonl",
+            str(python), "-m", self.setting.module_name, "module", *action,
+            "--events-jsonl",
         ]
         options = {
             "cwd": module_root,

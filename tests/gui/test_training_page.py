@@ -37,6 +37,7 @@ class FakeModuleProcess(QObject):
         self.started = []
         self.stopped = False
         self.promoted = []
+        self.inferred = []
 
     def start(self, path):
         self.started.append(path)
@@ -46,6 +47,9 @@ class FakeModuleProcess(QObject):
 
     def promote(self, job, selection):
         self.promoted.append((job, selection))
+
+    def infer(self, request):
+        self.inferred.append(request)
 
 
 class FakeDatasetController(QObject):
@@ -327,4 +331,60 @@ def test_listening_artifact_enables_human_promotion_and_failure_keeps_candidates
     assert page.tabs.currentIndex() == 0
     assert page.error_summary.isVisibleTo(page)
     assert page.config_page.isAncestorOf(page.error_summary)
+    page.close()
+
+
+def test_promotion_unlocks_inference_and_audio_artifact_loads_result(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    process = FakeModuleProcess()
+    built = []
+    request = tmp_path / "request.json"
+    request.write_text("{}", encoding="utf-8")
+
+    def build_request(*args):
+        built.append(args)
+        return request
+
+    page = TrainingPage(
+        (_binding(tmp_path),),
+        LocaleController("en"),
+        process_factory=lambda _setting: process,
+        build_inference_request=build_request,
+    )
+    page.attach_process(process)
+    project, _ = _project(tmp_path)
+    job = project / "jobs" / "job-1" / "job.json"
+    job.parent.mkdir(parents=True)
+    job.write_text("{}", encoding="utf-8")
+    page.job_path = job
+    model = project / "models" / "Acane"
+    model.mkdir(parents=True)
+
+    process.event_received.emit(ModuleEvent(
+        1, "job", "artifact", "now",
+        artifacts=({"type": "promoted_model", "path": str(model.resolve())},),
+    ))
+    assert page.inference_page.model is None
+    process.event_received.emit(ModuleEvent(1, "job", "promotion_completed", "now"))
+    assert page.inference_page.model == model.resolve()
+
+    page.inference_page.text.setPlainText("hello")
+    page.inference_page.start_button.click()
+    assert built and built[0][0] == job
+    assert built[0][1] == model.resolve()
+    assert process.inferred == [request]
+    assert page.form.isEnabled()
+    assert not page.candidate_page.promote_button.isEnabled()
+    assert not page.inference_page.start_button.isEnabled()
+
+    output = project / "outputs" / "Acane" / "gui" / "result.wav"
+    output.parent.mkdir(parents=True)
+    output.write_bytes(b"wav")
+    process.event_received.emit(ModuleEvent(
+        1, "job", "artifact", "now",
+        artifacts=({"type": "inference_audio", "path": str(output.resolve())},),
+    ))
+    assert page.inference_page.result == output.resolve()
     page.close()

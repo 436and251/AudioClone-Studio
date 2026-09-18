@@ -10,11 +10,15 @@ from PySide6.QtWidgets import (
 )
 
 from ..training_modules.job import build_job as default_build_job
+from ..training_modules.inference import (
+    build_inference_request as default_build_inference_request,
+)
 from ..training_modules.artifacts import load_listening_manifest
 from ..training_modules.models import ModuleEvent
 from ..training_modules.process import ModuleProcessController
 from .i18n import LocaleController, Translator
 from .candidate_page import CandidatePage
+from .inference_page import InferenceInput, InferencePage
 from .styles import FAILED, MUTED
 from .training_form import ModuleBinding, TrainingForm, TrainingSelection
 from .training_progress import TrainingProgress
@@ -28,6 +32,7 @@ class TrainingPage(QWidget):
         parent=None,
         *,
         build_job: Callable[..., Path] = default_build_job,
+        build_inference_request: Callable[..., Path] = default_build_inference_request,
         process_factory: Callable[..., object] = ModuleProcessController,
     ) -> None:
         super().__init__(parent)
@@ -35,12 +40,14 @@ class TrainingPage(QWidget):
         self.locale_controller = locale_controller
         self.translator = Translator(locale_controller.locale)
         self._build_job = build_job
+        self._build_inference_request = build_inference_request
         self._process_factory = process_factory
         self.process = None
         self.job_path: Path | None = None
         self.active_selection: TrainingSelection | None = None
         self._running = False
         self._operation = "run"
+        self._pending_promoted_model: Path | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 24, 30, 24)
@@ -56,7 +63,7 @@ class TrainingPage(QWidget):
         config_layout.setContentsMargins(0, 14, 0, 0)
         config_layout.setSpacing(14)
         self.candidate_page = CandidatePage(locale_controller)
-        self.inference_page = QWidget()
+        self.inference_page = InferencePage(locale_controller)
         self.tabs.addTab(self.config_page, "")
         self.tabs.addTab(self.candidate_page, "")
         self.tabs.addTab(self.inference_page, "")
@@ -110,6 +117,7 @@ class TrainingPage(QWidget):
         self.start_button.clicked.connect(self._start)
         self.stop_button.clicked.connect(self._stop)
         self.candidate_page.promotion_requested.connect(self._promote)
+        self.inference_page.inference_requested.connect(self._infer)
         locale_controller.locale_changed.connect(self._locale_changed)
         self.retranslate_ui(self.translator)
         self._set_running(False)
@@ -154,6 +162,8 @@ class TrainingPage(QWidget):
                 selection.training_data,
             )
             self.active_selection = selection
+            self._pending_promoted_model = None
+            self.inference_page.set_model(None)
             process = self._process_factory(selection.setting)
             self.attach_process(process)
             self._operation = "run"
@@ -180,8 +190,25 @@ class TrainingPage(QWidget):
         elif event.type == "job_cancelled":
             self.status.setText(self.translator.text("status.stopped"))
         for artifact in event.artifacts:
-            if artifact.get("type") == "listening_manifest":
+            artifact_type = artifact.get("type")
+            if artifact_type == "listening_manifest":
                 self._load_candidates(Path(str(artifact.get("path"))))
+            elif artifact_type == "promoted_model":
+                model = Path(str(artifact.get("path"))).resolve()
+                if not model.is_dir():
+                    self._protocol_failed("promoted model is unavailable")
+                    return
+                self._pending_promoted_model = model
+            elif artifact_type == "inference_audio":
+                audio = Path(str(artifact.get("path"))).resolve()
+                if not audio.is_file():
+                    self._protocol_failed("inference audio is unavailable")
+                    return
+                self.inference_page.set_result(audio)
+                self.tabs.setCurrentIndex(2)
+        if event.type == "promotion_completed" and self._pending_promoted_model is not None:
+            self.inference_page.set_model(self._pending_promoted_model)
+            self._pending_promoted_model = None
 
     def _stderr(self, text: str) -> None:
         for line in text.splitlines():
@@ -190,17 +217,32 @@ class TrainingPage(QWidget):
 
     def _protocol_failed(self, message: str) -> None:
         self._append_activity(message)
-        self._show_error(message)
+        if self._operation == "infer":
+            self.inference_page.set_error(message)
+            self.tabs.setCurrentIndex(2)
+        else:
+            self._show_error(message)
 
     def _completed(self, returncode: int) -> None:
         self._set_running(False)
         if returncode == 0:
-            key = "training.promoted" if self._operation == "promote" else "training.completed"
+            key = {
+                "promote": "training.promoted",
+                "infer": "inference.completed",
+            }.get(self._operation, "training.completed")
             self.status.setText(self.translator.text(key))
         else:
-            self._show_error(
-                self.translator.text("training.process_failed", returncode=returncode)
+            message = self.translator.text(
+                "training.process_failed", returncode=returncode
             )
+            if self._operation == "infer":
+                self.inference_page.set_error(message)
+                self.tabs.setCurrentIndex(2)
+                self.status.setText(self.translator.text("training.failed"))
+            else:
+                self._show_error(message)
+            if self._operation == "promote":
+                self._pending_promoted_model = None
         self._operation = "run"
 
     def _show_error(self, message: str) -> None:
@@ -220,6 +262,7 @@ class TrainingPage(QWidget):
         self.start_button.setEnabled(not running and self.form.is_valid())
         self.next_run_hint.setVisible(running)
         self.candidate_page.set_busy(running)
+        self.inference_page.set_busy(running)
 
     def _update_actions(self, *_):
         self.start_button.setEnabled(not self._running and self.form.is_valid())
@@ -248,6 +291,30 @@ class TrainingPage(QWidget):
             self._operation = "run"
             self._set_running(False)
             self._show_error(str(error))
+
+    def _infer(self, values: InferenceInput) -> None:
+        if self.process is None or self.job_path is None or self.inference_page.model is None:
+            self.inference_page.set_error(self.translator.text("inference.no_model"))
+            return
+        try:
+            request = self._build_inference_request(
+                self.job_path,
+                self.inference_page.model,
+                values.text,
+                values.text_file,
+                values.language,
+                values.device,
+                datetime.now(),
+            )
+            self._operation = "infer"
+            self._set_running(True)
+            self.status.setText(self.translator.text("inference.running"))
+            self.process.infer(request)
+        except Exception as error:
+            self._operation = "run"
+            self._set_running(False)
+            self.inference_page.set_error(str(error))
+            self.tabs.setCurrentIndex(2)
 
 
 def _event_text(event: ModuleEvent) -> str:
