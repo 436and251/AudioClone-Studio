@@ -180,6 +180,10 @@ def test_studio_fits_screen_scrolls_pages_and_collapses_narrow_navigation(tmp_pa
 
     assert window.width() <= available.width()
     assert window.height() <= available.height()
+    if available.width() >= 1440:
+        assert window.width() == 1440
+    if available.height() >= 900:
+        assert window.height() == 900
     assert all(area.widgetResizable() for area in window.findChildren(QScrollArea))
 
     window.show()

@@ -64,9 +64,6 @@ class TrainingForm(QWidget):
         self.output_label = QLabel()
         self.device_label = QLabel()
         self.precision_label = QLabel()
-        self.reference_label = QLabel()
-        self.reference_text_label = QLabel()
-        self.reference_language_label = QLabel()
         self.stages_label = QLabel()
 
         self.framework_combo = QComboBox()
@@ -109,19 +106,6 @@ class TrainingForm(QWidget):
         self.common_layout.addWidget(self.stages_label, 4, 0)
         self.common_layout.addWidget(stages, 4, 1, 1, 3)
 
-        self.reference_audio = QLineEdit()
-        self.reference_text = QLineEdit()
-        self.reference_language = QComboBox()
-        for language in ("ja", "zh", "en"):
-            self.reference_language.addItem("", language)
-        self.common_layout.addWidget(self.reference_label, 5, 0)
-        self.common_layout.addWidget(
-            self._path_row(self.reference_audio, self._browse_reference), 5, 1, 1, 3
-        )
-        self.common_layout.addWidget(self.reference_text_label, 6, 0)
-        self.common_layout.addWidget(self.reference_text, 6, 1)
-        self.common_layout.addWidget(self.reference_language_label, 6, 2)
-        self.common_layout.addWidget(self.reference_language, 6, 3)
         layout.addLayout(self.common_layout)
 
         self.advanced_toggle = QToolButton()
@@ -140,12 +124,9 @@ class TrainingForm(QWidget):
 
         self.framework_combo.currentIndexChanged.connect(self._framework_changed)
         self.advanced_toggle.toggled.connect(self._toggle_advanced)
-        for edit in (
-            self.project_name, self.dataset_edit, self.reference_audio,
-            self.reference_text,
-        ):
+        for edit in (self.project_name, self.dataset_edit):
             edit.textChanged.connect(self._changed)
-        for combo in (self.device, self.precision, self.reference_language):
+        for combo in (self.device, self.precision):
             combo.currentIndexChanged.connect(self._changed)
         for box in self.stage_boxes.values():
             box.toggled.connect(self._changed)
@@ -189,13 +170,6 @@ class TrainingForm(QWidget):
         )
 
     def values(self) -> dict[str, object]:
-        reference = None
-        if self.stage_boxes["evaluate"].isChecked():
-            reference = {
-                "audio": str(Path(self.reference_audio.text()).resolve()),
-                "text": self.reference_text.text().strip() or None,
-                "language": self.reference_language.currentData(),
-            }
         return {
             "project_name": self.project_name.text().strip(),
             "output_root": Path(self.output_edit.text()).resolve(),
@@ -205,7 +179,7 @@ class TrainingForm(QWidget):
                 key: _widget_value(self.advanced_fields[key], descriptor.kind)
                 for key, descriptor in self._field_descriptors.items()
             },
-            "reference": reference,
+            "reference": None,
         }
 
     def is_valid(self) -> bool:
@@ -224,10 +198,6 @@ class TrainingForm(QWidget):
             or not _valid_training_data(training_data, framework)
             or not _contained_path(output, project)
             or not self.selected_stages()
-        ):
-            return False
-        if self.stage_boxes["evaluate"].isChecked() and not _existing_file(
-            Path(self.reference_audio.text())
         ):
             return False
         return all(
@@ -252,17 +222,11 @@ class TrainingForm(QWidget):
             self.device_label: "training.device",
             self.precision_label: "training.precision",
             self.stages_label: "training.stages",
-            self.reference_label: "training.reference_audio",
-            self.reference_text_label: "training.reference_text",
-            self.reference_language_label: "training.reference_language",
         }
         for label, key in labels.items():
             label.setText(translator.text(key))
         for stage, box in self.stage_boxes.items():
             box.setText(translator.text(f"training.stage.{stage}"))
-        for index in range(self.reference_language.count()):
-            code = self.reference_language.itemData(index)
-            self.reference_language.setItemText(index, translator.text(f"language.{code}"))
         self.advanced_toggle.setText(translator.text("training.advanced"))
         for key, label in self.advanced_group_titles.items():
             label.setText(translator.text(f"training.advanced_group.{key}"))
@@ -356,12 +320,6 @@ class TrainingForm(QWidget):
         if path:
             self.dataset_edit.setText(str(Path(path).resolve()))
 
-    def _browse_reference(self):
-        path, _ = QFileDialog.getOpenFileName(self, "", self.reference_audio.text(), "WAV (*.wav);;All files (*)")
-        if path:
-            self.reference_audio.setText(path)
-
-
 def _field_widget(field: FieldDescriptor) -> QWidget:
     if field.kind == "integer":
         widget = QSpinBox()
@@ -431,10 +389,6 @@ def _contained_path(path: Path, root: Path) -> bool:
     resolved = path.resolve()
     root = root.resolve()
     return resolved == root or resolved.is_relative_to(root)
-
-
-def _existing_file(path: Path) -> bool:
-    return path.is_absolute() and path.resolve().is_file()
 
 
 def _valid_training_data(

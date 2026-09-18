@@ -98,7 +98,9 @@ def test_main_window_preserves_original_structure_defaults_and_size(tmp_path):
     assert window.minimumHeight() <= available.height()
     assert window.title_label.objectName() == 'Title'
     assert window.subtitle_label.objectName() == 'Subtitle'
-    assert window.settings_btn.objectName() == 'IconButton'
+    assert window.settings_btn.objectName() == 'SettingsButton'
+    assert window.settings_btn.width() == 32
+    assert window.settings_btn.height() == 32
     assert window.output_label.objectName() == 'FieldChip'
     assert window.stop.objectName() == 'Danger'
     assert window.start.objectName() == 'Primary'

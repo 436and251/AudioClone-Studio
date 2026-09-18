@@ -125,27 +125,27 @@ QLabel#CandidatePlaceholderTitle {
     font-weight: 700;
 }
 
-QToolButton#IconButton {
-    background: #2A2A2A;
-    color: #FFFFFF;
+QToolButton#SettingsButton {
+    background: transparent;
+    color: #1ED760;
     border: none;
-    border-radius: 22px;
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 700;
-    min-width: 44px;
-    min-height: 44px;
-    max-width: 44px;
-    max-height: 44px;
+    min-width: 32px;
+    min-height: 32px;
+    max-width: 32px;
+    max-height: 32px;
     padding: 0;
 }
 
-QToolButton#IconButton:hover {
-    background: #343434;
-    color: #1ED760;
+QToolButton#SettingsButton:hover {
+    background: transparent;
+    color: #42E77A;
 }
 
-QToolButton#IconButton:pressed {
-    background: #1F1F1F;
+QToolButton#SettingsButton:pressed {
+    background: transparent;
+    color: #18B850;
 }
 
 QLabel#NavigationTitle {

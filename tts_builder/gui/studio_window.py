@@ -68,8 +68,8 @@ class StudioWindow(QMainWindow):
     def _fit_to_screen(self) -> None:
         available = QApplication.primaryScreen().availableGeometry()
         self.setMinimumSize(min(640, available.width()), min(480, available.height()))
-        width = min(1180, max(640, int(available.width() * 0.9)), available.width())
-        height = min(820, max(560, int(available.height() * 0.9)), available.height())
+        width = min(1440, available.width())
+        height = min(900, available.height())
         self.resize(width, height)
 
     def resizeEvent(self, event: QResizeEvent) -> None:

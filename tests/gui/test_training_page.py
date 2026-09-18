@@ -138,9 +138,6 @@ def test_training_page_builds_job_and_starts_selected_module(tmp_path):
         build_job=build, process_factory=lambda _setting: process,
     )
     page.prefill_dataset(dataset)
-    reference = project / "reference.wav"
-    reference.write_bytes(b"wav")
-    page.form.reference_audio.setText(str(reference))
     app.processEvents()
     assert page.start_button.isEnabled()
 
@@ -204,9 +201,6 @@ def test_running_job_uses_snapshot_while_form_edits_apply_next_time(tmp_path):
         build_job=build, process_factory=lambda _setting: process,
     )
     page.prefill_dataset(dataset)
-    reference = project / "reference.wav"
-    reference.write_bytes(b"wav")
-    page.form.reference_audio.setText(str(reference))
     page.start_button.click()
     snapshot = page.active_selection
 

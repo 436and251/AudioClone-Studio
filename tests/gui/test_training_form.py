@@ -60,9 +60,6 @@ def test_descriptor_form_maps_fields_and_preserves_canonical_stages(tmp_path):
     form = TrainingForm((binding,), Translator("en"))
     project, dataset = _project(tmp_path)
     form.prefill_dataset(dataset)
-    reference = project / "reference.wav"
-    reference.write_bytes(b"wav")
-    form.reference_audio.setText(str(reference))
     form.advanced_fields["resource"].setText(str(binding[0].project_root))
 
     assert isinstance(form.advanced_fields["steps"], QSpinBox)
@@ -98,7 +95,9 @@ def test_prefill_uses_external_dataset_and_bound_module_output(tmp_path):
     assert not hasattr(form, "project_edit")
     assert Path(form.output_edit.text()) == (binding[0].project_root / "runs").resolve()
     assert form.project_name.text() == "Acane"
-    assert form.is_valid() is False  # evaluation still needs a reference audio
+    assert form.is_valid() is True
+    assert form.values()["reference"] is None
+    assert not hasattr(form, "reference_audio")
 
 
 @pytest.mark.parametrize(
@@ -264,7 +263,6 @@ def test_combo_and_spin_wheels_scroll_page_without_changing_values(tmp_path):
     widgets = [
         form.device,
         form.precision,
-        form.reference_language,
         form.advanced_fields["steps"],
         form.advanced_fields["rate"],
         form.advanced_fields["mode"],
@@ -310,9 +308,6 @@ def test_snapshot_is_a_frozen_start_time_selection(tmp_path):
     form = TrainingForm((binding,), Translator("en"))
     project, dataset = _project(tmp_path)
     form.prefill_dataset(dataset)
-    reference = project / "reference.wav"
-    reference.write_bytes(b"wav")
-    form.reference_audio.setText(str(reference))
     form.advanced_fields["resource"].setText(str(binding[0].project_root))
 
     snapshot = form.snapshot()
