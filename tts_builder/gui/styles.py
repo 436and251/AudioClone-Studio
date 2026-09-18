@@ -1,6 +1,6 @@
 APP_QSS = r"""
 * { font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; font-size: 14px; }
-QWidget { background: transparent; color: #FFFFFF; }
+QWidget { background: transparent; color: #FFFFFF;font-weight: 600; }
 QMainWindow, QDialog { background: #121212; }
 QLabel#Title { font-size: 28px; font-weight: 700; }
 QLabel#Subtitle { color: #B3B3B3; font-size: 15px; }
