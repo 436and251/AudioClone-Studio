@@ -93,17 +93,26 @@ def _matching_job(
         "module_id": module_id,
         "framework": framework,
         "project_name": project_name,
-        "project_root": str(root),
-        "job_dir": str(directory),
     }
     if (
         not isinstance(job_id, str)
         or not job_id
         or job_id != directory.name
         or any(payload.get(key) != value for key, value in expected.items())
+        or not _same_path(payload.get("project_root"), root)
+        or not _same_path(payload.get("job_dir"), directory)
     ):
         return None
     return job_id
+
+
+def _same_path(value: object, expected: Path) -> bool:
+    if not isinstance(value, str) or not Path(value).is_absolute():
+        return False
+    try:
+        return Path(value).resolve() == expected
+    except OSError:
+        return False
 
 
 def _completed_model(journal: Path, root: Path, job_id: str) -> Path | None:

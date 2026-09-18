@@ -69,6 +69,24 @@ def test_returns_newest_valid_completed_promotion(tmp_path):
     assert _recover(project) == new.resolve()
 
 
+def test_accepts_equivalent_windows_path_separators(tmp_path):
+    project = tmp_path / PROJECT_NAME
+    model = project / "models" / "model"
+    model.mkdir(parents=True)
+    directory = project / "jobs" / "job"
+    _, events = _job(
+        project,
+        "job",
+        overrides={
+            "project_root": project.resolve().as_posix(),
+            "job_dir": directory.resolve().as_posix(),
+        },
+    )
+    events.write_text(_promotion("job", model), encoding="utf-8")
+
+    assert _recover(project) == model.resolve()
+
+
 def test_skips_missing_malformed_and_incomplete_files(tmp_path):
     project = tmp_path / PROJECT_NAME
     project.mkdir()
