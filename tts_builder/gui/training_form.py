@@ -7,8 +7,8 @@ from typing import Sequence
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGridLayout,
-    QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QToolButton,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame,
+    QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QToolButton,
     QVBoxLayout, QWidget,
 )
 
@@ -48,6 +48,8 @@ class TrainingForm(QWidget):
         self.advanced_fields: dict[str, QWidget] = {}
         self._field_descriptors: dict[str, FieldDescriptor] = {}
         self._advanced_labels: dict[str, QLabel] = {}
+        self.advanced_groups: dict[str, QFrame] = {}
+        self.advanced_group_titles: dict[str, QLabel] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -130,8 +132,9 @@ class TrainingForm(QWidget):
         layout.addWidget(self.advanced_toggle)
         self.advanced_content = QWidget()
         self.advanced_content.setObjectName("AdvancedContent")
-        self.advanced_layout = QFormLayout(self.advanced_content)
+        self.advanced_layout = QGridLayout(self.advanced_content)
         self.advanced_layout.setContentsMargins(12, 12, 12, 12)
+        self.advanced_layout.setHorizontalSpacing(12)
         self.advanced_content.hide()
         layout.addWidget(self.advanced_content)
 
@@ -261,15 +264,21 @@ class TrainingForm(QWidget):
             code = self.reference_language.itemData(index)
             self.reference_language.setItemText(index, translator.text(f"language.{code}"))
         self.advanced_toggle.setText(translator.text("training.advanced"))
+        for key, label in self.advanced_group_titles.items():
+            label.setText(translator.text(f"training.advanced_group.{key}"))
         for key, label in self._advanced_labels.items():
             label.setText(self._field_descriptors[key].labels[translator.locale])
 
     def _framework_changed(self, *_):
-        while self.advanced_layout.rowCount():
-            self.advanced_layout.removeRow(0)
+        while self.advanced_layout.count():
+            item = self.advanced_layout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
         self.advanced_fields.clear()
         self._field_descriptors.clear()
         self._advanced_labels.clear()
+        self.advanced_groups.clear()
+        self.advanced_group_titles.clear()
         if not self.bindings or self.framework_combo.currentIndex() < 0:
             self._changed()
             return
@@ -286,14 +295,34 @@ class TrainingForm(QWidget):
             box.setVisible(stage in available)
             box.setEnabled(stage in available)
             box.setChecked(stage in available)
-        for descriptor in framework.fields:
-            widget = _field_widget(descriptor)
-            label = QLabel(descriptor.labels[self.translator.locale])
-            self.advanced_fields[descriptor.key] = widget
-            self._field_descriptors[descriptor.key] = descriptor
-            self._advanced_labels[descriptor.key] = label
-            self.advanced_layout.addRow(label, widget)
-            _connect_change(widget, self._changed)
+        grouped = {
+            key: [field for field in framework.fields if _advanced_group(field.key) == key]
+            for key in ("general", "s1", "s2")
+        }
+        for column, key in enumerate(key for key, fields in grouped.items() if fields):
+            frame = QFrame()
+            frame.setObjectName("AdvancedGroup")
+            group_layout = QVBoxLayout(frame)
+            title = QLabel(self.translator.text(f"training.advanced_group.{key}"))
+            title.setObjectName("AdvancedGroupTitle")
+            group_layout.addWidget(title)
+            fields_layout = QFormLayout()
+            fields_layout.setContentsMargins(0, 0, 0, 0)
+            fields_layout.setVerticalSpacing(10)
+            for descriptor in grouped[key]:
+                widget = _field_widget(descriptor)
+                label = QLabel(descriptor.labels[self.translator.locale])
+                self.advanced_fields[descriptor.key] = widget
+                self._field_descriptors[descriptor.key] = descriptor
+                self._advanced_labels[descriptor.key] = label
+                fields_layout.addRow(label, widget)
+                _connect_change(widget, self._changed)
+            group_layout.addLayout(fields_layout)
+            group_layout.addStretch(1)
+            self.advanced_groups[key] = frame
+            self.advanced_group_titles[key] = title
+            self.advanced_layout.addWidget(frame, 0, column)
+            self.advanced_layout.setColumnStretch(column, 1)
         self._changed()
 
     def _toggle_advanced(self, expanded: bool) -> None:
@@ -368,6 +397,11 @@ def _field_widget(field: FieldDescriptor) -> QWidget:
         return widget
     widget = QLineEdit(str(field.default))
     return widget
+
+
+def _advanced_group(key: str) -> str:
+    prefix = key.partition(".")[0]
+    return prefix if prefix in {"s1", "s2"} else "general"
 
 
 def _connect_change(widget: QWidget, callback) -> None:

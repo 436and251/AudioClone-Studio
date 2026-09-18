@@ -14,7 +14,7 @@ QLabel#FieldChip {
     font-weight: 500;
 }
 QFrame#Card { background: #181818; border: 1px solid #282828; border-radius: 14px; }
-QLineEdit, QComboBox {
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     background: #242424;
     border: 1px solid #333333;
     border-radius: 10px;
@@ -23,7 +23,7 @@ QLineEdit, QComboBox {
     color: #FFFFFF;
 }
 
-QLineEdit:focus, QComboBox:focus {border: 1px solid #1ED760; }
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {border: 1px solid #1ED760; }
 
 QComboBox { padding: 10px 36px 10px 12px; }
 
@@ -82,9 +82,41 @@ QToolButton#AdvancedToggle {
 }
 
 QWidget#AdvancedContent {
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+}
+
+QFrame#AdvancedGroup {
     background: #202020;
     border: none;
     border-radius: 10px;
+}
+
+QLabel#AdvancedGroupTitle {
+    background: transparent;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+QWidget#AdvancedContent QLineEdit,
+QWidget#AdvancedContent QComboBox,
+QWidget#AdvancedContent QSpinBox,
+QWidget#AdvancedContent QDoubleSpinBox,
+QWidget#AdvancedContent QCheckBox {
+    background: #2A2A2A;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 12px;
+    min-height: 20px;
+}
+
+QSpinBox, QDoubleSpinBox { padding-right: 30px; }
+QSpinBox::up-button, QSpinBox::down-button,
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+    background: transparent;
+    border: none;
+    width: 24px;
 }
 
 QLabel#CandidatePlaceholderTitle {

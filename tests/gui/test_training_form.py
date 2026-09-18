@@ -199,6 +199,50 @@ def test_short_training_fields_share_rows(tmp_path):
     )[0]
 
 
+def test_advanced_fields_are_grouped_general_s1_s2_in_parallel(tmp_path):
+    from tts_builder.gui.training_form import TrainingForm
+
+    create_application([])
+    setting, module = _binding(tmp_path)
+    labels = {"en": "Value", "zh_CN": "数值", "ja": "値"}
+    framework = FrameworkDescriptor(
+        "grouped", "Grouped", module.frameworks[0].capabilities,
+        module.frameworks[0].training_data,
+        (
+            FieldDescriptor("preprocess.resume", "boolean", True, {}, labels),
+            FieldDescriptor("s1.batch_size", "integer", 2, {"minimum": 1}, labels),
+            FieldDescriptor("s2.batch_size", "integer", 2, {"minimum": 1}, labels),
+        ),
+    )
+    grouped_module = ModuleDescriptor(2, "grouped", "1.0", (framework,))
+    form = TrainingForm(((setting, grouped_module),), Translator("zh_CN"))
+
+    assert tuple(form.advanced_groups) == ("general", "s1", "s2")
+    assert [form.advanced_group_titles[key].text() for key in form.advanced_groups] == [
+        "通用", "S1", "S2",
+    ]
+    positions = [
+        form.advanced_layout.getItemPosition(
+            form.advanced_layout.indexOf(form.advanced_groups[key])
+        )
+        for key in form.advanced_groups
+    ]
+    assert [position[0] for position in positions] == [0, 0, 0]
+    assert [position[1] for position in positions] == [0, 1, 2]
+
+
+def test_advanced_controls_use_rounded_dark_input_style():
+    from tts_builder.gui.styles import APP_QSS
+
+    inputs = APP_QSS.split("QLineEdit, QComboBox", 1)[1].split("}", 1)[0]
+    assert "QSpinBox" in inputs
+    assert "QDoubleSpinBox" in inputs
+    group = APP_QSS.split("QFrame#AdvancedGroup", 1)[1].split("}", 1)[0]
+    assert "border: none" in group
+    assert "border-radius" in group
+    assert "background" in group
+
+
 def test_combo_and_spin_wheels_scroll_page_without_changing_values(tmp_path):
     from PySide6.QtCore import QPoint, QPointF, Qt
     from PySide6.QtGui import QWheelEvent
