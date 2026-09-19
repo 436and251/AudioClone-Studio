@@ -86,7 +86,12 @@ def latest_promoted_model(
         model = _completed_model(journal, root, job_id)
         if model is not None:
             return model
-    return None
+    relative = Path(project_name)
+    if relative.name != project_name or project_name in {".", ".."}:
+        return None
+    models_root = (root / "models").resolve()
+    model = (models_root / project_name).resolve()
+    return model if _complete_local_bundle(model, models_root) else None
 
 
 def latest_failed_job(

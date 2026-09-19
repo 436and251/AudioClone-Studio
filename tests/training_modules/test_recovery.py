@@ -283,3 +283,24 @@ def test_model_history_lists_only_complete_local_models_and_latest_audio(tmp_pat
     assert history[0].latest_audio is None
     assert history[1].model == acane.resolve()
     assert history[1].latest_audio == new.resolve()
+
+
+def test_latest_promoted_model_falls_back_to_complete_named_bundle(tmp_path):
+    from tts_builder.training_modules.recovery import latest_promoted_model
+
+    project = tmp_path / "project"
+    model = _complete_bundle(project / "models" / PROJECT_NAME)
+
+    assert latest_promoted_model(
+        project, MODULE, FRAMEWORK, PROJECT_NAME
+    ) == model.resolve()
+
+
+def test_latest_promoted_model_rejects_incomplete_or_unsafe_named_bundle(tmp_path):
+    from tts_builder.training_modules.recovery import latest_promoted_model
+
+    project = tmp_path / "project"
+    (project / "models" / PROJECT_NAME).mkdir(parents=True)
+
+    assert latest_promoted_model(project, MODULE, FRAMEWORK, PROJECT_NAME) is None
+    assert latest_promoted_model(project, MODULE, FRAMEWORK, "../Acane") is None

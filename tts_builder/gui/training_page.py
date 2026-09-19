@@ -24,6 +24,7 @@ from ..training_modules.recovery import (
     latest_failed_job,
     latest_promoted_model,
 )
+from ..training_modules.retention import CleanupSummary, cleanup_jobs
 from .i18n import LocaleController, Translator
 from .candidate_page import CandidatePage
 from .inference_page import InferenceInput, InferencePage
@@ -47,6 +48,7 @@ class TrainingPage(QWidget):
         recover_failed_job: Callable[..., FailedJob | None] = latest_failed_job,
         recover_model_history: Callable[..., tuple[ModelHistoryItem, ...]] = local_model_history,
         process_factory: Callable[..., object] = ModuleProcessController,
+        cleanup: Callable = cleanup_jobs,
     ) -> None:
         super().__init__(parent)
         self.bindings = tuple(bindings)
@@ -59,6 +61,7 @@ class TrainingPage(QWidget):
         self._recover_failed = recover_failed_job
         self._recover_history = recover_model_history
         self._process_factory = process_factory
+        self._cleanup_jobs = cleanup
         self.process = None
         self.job_path: Path | None = None
         self.active_selection: TrainingSelection | None = None
@@ -159,6 +162,7 @@ class TrainingPage(QWidget):
         self.retranslate_ui(self.translator)
         self._set_running(False)
         self._refresh_model_history()
+        self._cleanup_module_jobs()
 
     def prefill_dataset(self, path: Path) -> None:
         self.form.prefill_dataset(path)
@@ -350,6 +354,7 @@ class TrainingPage(QWidget):
         self._operation = "run"
         if not (returncode != 0 and operation == "promote"):
             self._recover_promoted_model()
+        self._cleanup_module_jobs()
 
     def _show_error(self, message: str) -> None:
         self.progress_card.show()
@@ -367,6 +372,37 @@ class TrainingPage(QWidget):
     def _append_activity(self, text: str) -> None:
         stamp = datetime.now().strftime("%H:%M:%S")
         self.activity.appendPlainText(f"{stamp}  {text}")
+
+    def _cleanup_module_jobs(self) -> None:
+        roots = {
+            Path(setting.project_root).resolve()
+            for setting, _ in self.bindings
+            if setting is not None
+        }
+        total = CleanupSummary()
+        errors = []
+        for root in roots:
+            try:
+                result = self._cleanup_jobs(root)
+            except (OSError, ValueError) as error:
+                errors.append(str(error))
+                continue
+            total = CleanupSummary(
+                total.removed + result.removed,
+                total.retained_failures + result.retained_failures,
+                total.uncertain + result.uncertain,
+            )
+        if errors:
+            self._append_activity(self.translator.text(
+                "training.cleanup.failed", error="; ".join(errors)
+            ))
+        elif total.removed or total.retained_failures or total.uncertain:
+            self._append_activity(self.translator.text(
+                "training.cleanup.summary",
+                removed=total.removed,
+                retained=total.retained_failures,
+                uncertain=total.uncertain,
+            ))
 
     def _set_running(self, running: bool) -> None:
         self._running = running

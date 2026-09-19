@@ -25,6 +25,7 @@ from tts_builder.training_modules.models import (
     TrainingDataDescriptor,
 )
 from tts_builder.training_modules.artifacts import load_listening_manifest
+from tts_builder.training_modules.retention import CleanupSummary
 
 
 class FakeModuleProcess(QObject):
@@ -611,4 +612,86 @@ def test_retry_explains_when_failed_job_was_removed(tmp_path):
 
     assert page.error_summary.text() == "The failed job record is no longer available."
     assert page.error_summary.isVisibleTo(page)
+    page.close()
+
+
+def test_training_page_cleans_each_unique_module_root_on_startup(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    create_application([])
+    binding = _binding(tmp_path)
+    calls = []
+
+    page = TrainingPage(
+        (binding, binding),
+        LocaleController("en"),
+        cleanup=lambda root: calls.append(Path(root).resolve()) or CleanupSummary(),
+    )
+
+    assert calls == [binding[0].project_root.resolve()]
+    page.close()
+
+
+def test_process_completion_runs_cleanup_after_terminal_events(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    process = FakeModuleProcess()
+    calls = []
+    page = TrainingPage(
+        (_binding(tmp_path),),
+        LocaleController("en"),
+        cleanup=lambda root: calls.append(Path(root).resolve()) or CleanupSummary(),
+    )
+    page.attach_process(process)
+    calls.clear()
+
+    process.completed.emit(0)
+    app.processEvents()
+
+    assert calls == [page.bindings[0][0].project_root.resolve()]
+    page.close()
+
+
+def test_cleanup_failure_does_not_fail_the_completed_operation(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    process = FakeModuleProcess()
+    calls = 0
+
+    def cleanup(_root):
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise OSError("locked job directory")
+        return CleanupSummary()
+
+    page = TrainingPage(
+        (_binding(tmp_path),), LocaleController("en"), cleanup=cleanup
+    )
+    page.attach_process(process)
+
+    process.completed.emit(0)
+    app.processEvents()
+
+    assert page.status.text() == "Training task completed"
+    assert "locked job directory" in page.activity.toPlainText()
+    page.close()
+
+
+def test_cleanup_summary_adds_only_one_activity_line(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    create_application([])
+    page = TrainingPage(
+        (_binding(tmp_path),),
+        LocaleController("zh_CN"),
+        cleanup=lambda _root: CleanupSummary(removed=2, retained_failures=1),
+    )
+
+    lines = page.activity.toPlainText().splitlines()
+    assert len(lines) == 1
+    assert "已清理 2 个过期任务" in lines[0]
+    assert "保留 1 个可恢复失败任务" in lines[0]
     page.close()
