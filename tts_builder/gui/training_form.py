@@ -183,28 +183,34 @@ class TrainingForm(QWidget):
         }
 
     def is_valid(self) -> bool:
+        return self.validation_error() is None
+
+    def validation_error(self) -> str | None:
         if not self.bindings or self.framework_combo.currentIndex() < 0:
-            return False
+            return self.translator.text("training.module_unavailable")
         setting, _, framework = self.selection()
         if setting is None:
-            return False
+            return self.translator.text("training.module_unavailable")
         project = Path(setting.project_root)
         training_data = Path(self.dataset_edit.text())
         output = Path(self.output_edit.text())
-        if (
-            _PROJECT_NAME.fullmatch(self.project_name.text().strip()) is None
-            or not project.is_absolute()
-            or not project.is_dir()
-            or not _valid_training_data(training_data, framework)
-            or not _contained_path(output, project)
-            or not self.selected_stages()
-        ):
-            return False
-        return all(
-            descriptor.kind != "path"
-            or _contained_path(Path(self.advanced_fields[key].text()), project)
+        if not project.is_absolute() or not project.is_dir():
+            return self.translator.text("training.module_unavailable")
+        if _PROJECT_NAME.fullmatch(self.project_name.text().strip()) is None:
+            return self.translator.text("training.project_name_invalid")
+        if not _valid_training_data(training_data, framework):
+            return self.translator.text("training.dataset_invalid")
+        if not _contained_path(output, project):
+            return self.translator.text("training.output_invalid")
+        if not self.selected_stages():
+            return self.translator.text("training.stages_missing")
+        if any(
+            descriptor.kind == "path"
+            and not _contained_path(Path(self.advanced_fields[key].text()), project)
             for key, descriptor in self._field_descriptors.items()
-        )
+        ):
+            return self.translator.text("training.advanced_path_invalid")
+        return None
 
     def prefill_dataset(self, path: Path) -> None:
         dataset = Path(path).resolve()

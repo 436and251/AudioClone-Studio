@@ -92,6 +92,7 @@ class DatasetPage(QWidget):
         self.output_label.setAlignment(Qt.AlignCenter)
         self.output_label.setFixedWidth(140)
         self.output = QLineEdit(str(self.settings.output_root))
+        self.output.textChanged.connect(self._validate)
         self.output_browse = QPushButton()
         self.output_browse.clicked.connect(self._browse_output)
         out.addWidget(self.output_label)
@@ -181,8 +182,16 @@ class DatasetPage(QWidget):
         self.start.setText(self.translator.text(f"actions.{mode}"))
 
     def _validate(self, *_) -> None:
-        ready = bool(self.source.value() and self.speaker.text().strip())
-        self.start.setEnabled(ready and not self.controller.running)
+        self.start.setEnabled(not self.controller.running)
+
+    def _validation_error(self) -> str | None:
+        if not self.source.value():
+            return "validation.source_required"
+        if not self.speaker.text().strip():
+            return "validation.speaker_required"
+        if not self.output.text().strip():
+            return "validation.output_required"
+        return None
 
     def _config(self) -> BuildConfig:
         return BuildConfig(
@@ -193,6 +202,11 @@ class DatasetPage(QWidget):
         )
 
     def _start(self) -> None:
+        error = self._validation_error()
+        if error is not None:
+            self.status.setStyleSheet(f"color:{FAILED}")
+            self._set_status(error)
+            return
         config = self._config()
         if not is_asr_model_ready(config.asr_model, self.settings.model_root / "huggingface"):
             size = estimated_asr_bytes(config.asr_model)
@@ -274,6 +288,10 @@ class DatasetPage(QWidget):
             self.output.setText(path)
 
     def _open_output(self) -> None:
+        if not self.output.text().strip():
+            self.status.setStyleSheet(f"color:{FAILED}")
+            self._set_status("validation.output_required")
+            return
         path = Path(self.output.text()).expanduser()
         path.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve())))

@@ -265,12 +265,9 @@ class InferencePage(QWidget):
         self.model_hint.setText(self.translator.text(key, **values))
 
     def _update_actions(self, *_):
-        inline = bool(self.text.toPlainText().strip())
-        source = Path(self.txt_edit.text().strip()) if self.txt_edit.text().strip() else None
         self.start_button.setEnabled(
             self.model is not None
             and not self._busy
-            and (inline or source is not None)
         )
         available = self.result is not None and self.result.is_file() and not self._busy
         self.play_button.setEnabled(available)
@@ -283,6 +280,9 @@ class InferencePage(QWidget):
         text = self.text.toPlainText().strip() or None
         source = self.txt_edit.text().strip()
         self.error.hide()
+        if not text and not source:
+            self.set_error(self.translator.text("inference.input_required"))
+            return
         if text and source:
             self.set_error(self.translator.text("inference.source_conflict"))
             return

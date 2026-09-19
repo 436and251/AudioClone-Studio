@@ -158,7 +158,7 @@ class CandidatePage(QWidget):
             for button in card.play_buttons:
                 button.setEnabled(not busy)
         self.promote_button.setEnabled(
-            not busy and not self._has_promoted_model and self.selected_id() is not None
+            not busy and not self._has_promoted_model and bool(self.candidates)
         )
         self._update_button_text()
 
@@ -255,8 +255,10 @@ class CandidatePage(QWidget):
         return CandidateCard(frame, select, rows, candidate.internal_id)
 
     def _selection_changed(self, *_):
+        if self.selected_id() is not None and not self._has_promoted_model:
+            self.operation_hint.hide()
         self.promote_button.setEnabled(
-            not self._busy and not self._has_promoted_model and self.selected_id() is not None
+            not self._busy and not self._has_promoted_model and bool(self.candidates)
         )
 
     def _update_button_text(self) -> None:
@@ -275,6 +277,13 @@ class CandidatePage(QWidget):
     def _promote(self) -> None:
         selection = self.selected_id()
         if selection is None:
+            self.operation_hint.setText(
+                self.translator.text("candidate.selection_required")
+            )
+            self.operation_hint.setProperty("state", "failed")
+            self.operation_hint.style().unpolish(self.operation_hint)
+            self.operation_hint.style().polish(self.operation_hint)
+            self.operation_hint.show()
             return
         answer = QMessageBox.question(
             self,

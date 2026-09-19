@@ -26,7 +26,9 @@ def test_empty_module_configuration_keeps_original_single_page_window(tmp_path):
 
     assert window.windowTitle() == 'Voice Dataset Builder'
     assert window.findChild(QStackedWidget) is None
-    assert not window.start.isEnabled()
+    assert window.start.isEnabled()
+    window.start.click()
+    assert window.status.text() == "Choose a media source first."
     window.source.set_value(str(tmp_path / 'input.wav'))
     window.speaker.setText('suis')
     app.processEvents()

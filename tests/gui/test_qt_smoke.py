@@ -58,13 +58,24 @@ class RecordingController(QObject):
         self.stop_calls += 1
 
 
-def test_main_window_enables_start_only_with_source_and_speaker(tmp_path):
+def test_main_window_start_explains_each_missing_required_field(tmp_path):
     app = create_application([])
     window = MainWindow(AppSettings(first_run_completed=True, model_root=tmp_path/'models', output_root=tmp_path/'out'))
-    assert not window.start.isEnabled()
+    assert window.start.isEnabled()
+    window.start.click()
+    assert window.status.text() == "Choose a media source first."
+
     window.source.set_value(str(tmp_path/'input.wav'))
+    window.start.click()
+    assert window.status.text() == "Enter the target speaker name."
+
     window.speaker.setText('suis')
+    window.output.clear()
     app.processEvents()
+    window.start.click()
+    assert window.status.text() == "Choose an output directory."
+
+    window.output.setText(str(tmp_path / "out"))
     assert window.start.isEnabled()
     window.close()
 
@@ -145,6 +156,19 @@ def test_output_actions_update_and_create_the_selected_directory(tmp_path, monke
     window.open_output.click()
     assert selected.is_dir()
     app.processEvents()
+    window.close()
+
+
+def test_open_output_explains_missing_directory(tmp_path):
+    create_application([])
+    window = MainWindow(AppSettings(
+        model_root=tmp_path / "models", output_root=tmp_path / "out"
+    ))
+    window.output.clear()
+
+    window.open_output.click()
+
+    assert window.status.text() == "Choose an output directory."
     window.close()
 
 

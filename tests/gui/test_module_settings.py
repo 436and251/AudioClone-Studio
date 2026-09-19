@@ -40,7 +40,12 @@ def test_settings_dialog_adds_edits_and_removes_explicit_module(tmp_path):
     editor = dialog.module_settings
 
     editor.add_button.click()
-    assert not dialog.save_button.isEnabled()
+    assert dialog.save_button.isEnabled()
+    dialog.save_button.click()
+    assert dialog.validation_error.text() == "Enter a training module name."
+    assert editor.check_button.isEnabled()
+    editor.check_button.click()
+    assert editor.connection_status.text() == "Enter a training module name."
     project, python = _paths(tmp_path)
     editor.name_edit.setText("GPT-SoVITS")
     editor.project_edit.setText(str(project))
@@ -60,6 +65,19 @@ def test_settings_dialog_adds_edits_and_removes_explicit_module(tmp_path):
     app.processEvents()
     assert dialog.save_button.isEnabled()
     assert dialog.result_settings().training_modules == ()
+    dialog.close()
+
+
+def test_settings_save_explains_missing_storage_paths(tmp_path):
+    create_application([])
+    dialog = SettingsDialog(AppSettings(
+        model_root=tmp_path / "models", output_root=tmp_path / "out"
+    ))
+    dialog.model_root.clear()
+
+    dialog.save_button.click()
+
+    assert dialog.validation_error.text() == "Choose a model storage directory."
     dialog.close()
 
 

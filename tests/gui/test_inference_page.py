@@ -78,6 +78,23 @@ def test_inference_page_explains_conflicting_text_sources(tmp_path):
     page.close()
 
 
+def test_inference_page_explains_missing_text_for_selected_model(tmp_path):
+    from tts_builder.gui.inference_page import InferencePage
+
+    create_application([])
+    page = InferencePage(LocaleController("en"), player=FakePlayer())
+    model = tmp_path / "model"
+    model.mkdir()
+    page.set_models((model,))
+
+    assert page.start_button.isEnabled()
+    page.start_button.click()
+
+    assert page.error.text() == "Enter text or choose a TXT file."
+    assert page.error.isVisibleTo(page)
+    page.close()
+
+
 def test_inference_history_selects_models_and_restores_each_result(tmp_path):
     from tts_builder.gui.inference_page import InferencePage
 

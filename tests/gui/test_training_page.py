@@ -151,6 +151,24 @@ def test_training_page_builds_job_and_starts_selected_module(tmp_path):
     page.close()
 
 
+def test_training_start_explains_invalid_configuration_instead_of_disabling(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    page = TrainingPage((_binding(tmp_path),), LocaleController("en"))
+
+    assert page.start_button.isEnabled()
+    page.start_button.click()
+
+    assert page.error_summary.text() == "Enter a valid project name using letters, numbers, '-' or '_'."
+    assert page.error_summary.isVisibleTo(page)
+    assert page.progress_card.isHidden()
+    page.form.project_name.setText("Acane")
+    page.start_button.click()
+    assert page.error_summary.text() == "Choose valid training data for this framework."
+    page.close()
+
+
 @pytest.mark.parametrize(
     ("locale", "labels"),
     [
@@ -567,4 +585,30 @@ def test_failed_job_can_be_retried_without_building_a_new_job(tmp_path):
     assert builds == []
     assert process.started == [job.resolve()]
     assert page.job_path == job.resolve()
+    page.close()
+
+
+def test_retry_explains_when_failed_job_was_removed(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+    from tts_builder.training_modules.recovery import FailedJob
+
+    app = create_application([])
+    project, dataset = _project(tmp_path)
+    setting, module = _binding(tmp_path)
+    job = setting.project_root / "jobs" / "failed" / "job.json"
+    job.parent.mkdir(parents=True)
+    job.write_text("{}", encoding="utf-8")
+    page = TrainingPage(
+        ((setting, module),),
+        LocaleController("en"),
+        recover_failed_job=lambda *args: FailedJob(job.resolve(), "evaluate"),
+    )
+    page.prefill_dataset(dataset)
+    app.processEvents()
+    job.unlink()
+
+    page.retry_button.click()
+
+    assert page.error_summary.text() == "The failed job record is no longer available."
+    assert page.error_summary.isVisibleTo(page)
     page.close()

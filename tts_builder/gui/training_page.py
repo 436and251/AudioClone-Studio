@@ -118,14 +118,14 @@ class TrainingPage(QWidget):
         self.progress_card.setObjectName("Card")
         progress_layout = QVBoxLayout(self.progress_card)
         self.progress = TrainingProgress(self.translator)
+        progress_layout.addWidget(self.progress)
+        layout.addWidget(self.progress_card)
+        self.progress_card.hide()
         self.error_summary = QLabel()
         self.error_summary.setWordWrap(True)
         self.error_summary.setStyleSheet(f"color:{FAILED}")
         self.error_summary.hide()
-        progress_layout.addWidget(self.progress)
-        progress_layout.addWidget(self.error_summary)
-        layout.addWidget(self.progress_card)
-        self.progress_card.hide()
+        layout.addWidget(self.error_summary)
 
         self.operation_status = QLabel()
         self.operation_status.setObjectName("OperationStatus")
@@ -185,7 +185,9 @@ class TrainingPage(QWidget):
         self.progress.retranslate_ui(translator)
 
     def _start(self) -> None:
-        if not self.form.is_valid():
+        error = self.form.validation_error()
+        if error is not None:
+            self._show_validation_error(error)
             return
         selection = self.form.snapshot()
         if selection.setting is None:
@@ -224,7 +226,11 @@ class TrainingPage(QWidget):
     def _retry_failed(self) -> None:
         failed = self.failed_job
         if failed is None or not failed.job_path.is_file():
-            self._recover_promoted_model()
+            self.failed_job = None
+            self._update_retry_button()
+            self._show_validation_error(
+                self.translator.text("training.retry_unavailable")
+            )
             return
         try:
             setting, _, _ = self.form.selection()
@@ -352,6 +358,12 @@ class TrainingPage(QWidget):
         self.tabs.setCurrentIndex(0)
         self.status.setText(self.translator.text("training.failed"))
 
+    def _show_validation_error(self, message: str) -> None:
+        self.error_summary.setText(message)
+        self.error_summary.show()
+        self.tabs.setCurrentIndex(0)
+        self.status.setText(self.translator.text("training.configuration_invalid"))
+
     def _append_activity(self, text: str) -> None:
         stamp = datetime.now().strftime("%H:%M:%S")
         self.activity.appendPlainText(f"{stamp}  {text}")
@@ -360,14 +372,14 @@ class TrainingPage(QWidget):
         self._running = running
         self.form.setEnabled(True)
         self.stop_button.setEnabled(running)
-        self.start_button.setEnabled(not running and self.form.is_valid())
+        self.start_button.setEnabled(not running)
         self.retry_button.setEnabled(not running and self.failed_job is not None)
         self.next_run_hint.setVisible(running)
         self.candidate_page.set_busy(running)
         self.inference_page.set_busy(running)
 
     def _update_actions(self, *_):
-        self.start_button.setEnabled(not self._running and self.form.is_valid())
+        self.start_button.setEnabled(not self._running)
 
     def _recover_promoted_model(self, *_):
         if self._running:

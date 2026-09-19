@@ -13,7 +13,7 @@ from ..training_modules.models import ProbeResult
 from ..training_modules.probe import probe_module
 from .i18n import Translator
 from .settings import TrainingModuleSetting
-from .styles import MUTED
+from .styles import FAILED, MUTED
 
 
 class ModuleSettings(QWidget):
@@ -126,6 +126,21 @@ class ModuleSettings(QWidget):
     def is_valid(self) -> bool:
         return all(self._draft_valid(draft) for draft in self._drafts)
 
+    def validation_error(self, draft: dict[str, str] | None = None) -> str | None:
+        drafts = (draft,) if draft is not None else tuple(self._drafts)
+        for item in drafts:
+            if not item["name"]:
+                return self.translator.text("modules.name_required")
+            project = Path(item["project_root"])
+            if not project.is_absolute() or not project.is_dir():
+                return self.translator.text("modules.project_invalid")
+            python = Path(item["python_executable"])
+            if not python.is_absolute() or not python.is_file():
+                return self.translator.text("modules.python_invalid")
+            if not item["module_name"]:
+                return self.translator.text("modules.entry_required")
+        return None
+
     def _refresh_list(self) -> None:
         current = self.module_list.currentRow()
         self.module_list.clear()
@@ -200,9 +215,15 @@ class ModuleSettings(QWidget):
 
     def _check_connection(self) -> None:
         row = self.module_list.currentRow()
-        if not 0 <= row < len(self._drafts) or not self._draft_valid(self._drafts[row]):
+        if not 0 <= row < len(self._drafts):
+            return
+        error = self.validation_error(self._drafts[row])
+        if error is not None:
+            self.connection_status.setStyleSheet(f"color:{FAILED}")
+            self.connection_status.setText(error)
             return
         result = self._probe(self._setting(self._drafts[row]))
+        self.connection_status.setStyleSheet(f"color:{MUTED}")
         if result.available and result.descriptor is not None:
             framework = result.descriptor.frameworks[0].display_name
             self.connection_status.setText(
@@ -215,7 +236,6 @@ class ModuleSettings(QWidget):
         valid = self.is_valid()
         self.check_button.setEnabled(
             0 <= self.module_list.currentRow() < len(self._drafts)
-            and self._draft_valid(self._drafts[self.module_list.currentRow()])
         )
         self.validity_changed.emit(valid)
 

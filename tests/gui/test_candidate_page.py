@@ -84,9 +84,13 @@ def test_candidate_selection_is_exclusive_and_confirmation_emits_internal_id(
     page.set_candidates(_candidates(tmp_path))
     selected = []
     page.promotion_requested.connect(selected.append)
-    assert not page.promote_button.isEnabled()
+    assert page.promote_button.isEnabled()
+    page.promote_button.click()
+    assert page.operation_hint.text() == "请先选择 A、B 或 C，再进行晋升。"
+    assert page.operation_hint.isVisibleTo(page)
 
     page.cards[0].select.click()
+    assert page.operation_hint.isHidden()
     page.cards[1].select.click()
     app.processEvents()
     assert [card.select.isChecked() for card in page.cards] == [False, True, False]
