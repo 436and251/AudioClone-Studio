@@ -22,17 +22,7 @@ def resource_path(relative_path: str) -> Path:
     return Path(__file__).resolve().parents[2] / relative_path
 
 
-def set_windows_app_id() -> None:
-    if sys.platform == "win32":
-        from ctypes import windll
-
-        windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "AudioCloneStudio.Source"
-        )
-
-
 def create_application(argv=None) -> QApplication:
-    set_windows_app_id()
     app = QApplication.instance() or QApplication(argv or sys.argv)
 
     app.setApplicationName("Voice Dataset Builder")

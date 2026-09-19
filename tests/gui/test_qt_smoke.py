@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import pytest
@@ -11,7 +13,6 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QDialog
 
 from tts_builder.gui.app import create_application
-from tts_builder.gui import app as gui_app
 from tts_builder.gui.main_window import MainWindow
 from tts_builder.gui.settings import AppSettings
 
@@ -173,35 +174,27 @@ def test_settings_action_applies_accepted_values_to_the_live_window(tmp_path, mo
     window.close()
 
 
-def test_source_gui_sets_shell_identity_before_creating_qapplication(monkeypatch, tmp_path):
-    events = []
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows shell identity")
+def test_source_gui_does_not_claim_an_unregistered_packaged_identity():
+    probe = """
+from ctypes import byref, c_wchar_p, windll
+from tts_builder.gui.app import create_application
 
-    class FakeApplication:
-        @classmethod
-        def instance(cls):
-            events.append("application")
-            return None
+create_application([])
+app_id = c_wchar_p()
+result = windll.shell32.GetCurrentProcessExplicitAppUserModelID(byref(app_id))
+print("NONE" if result else app_id.value)
+"""
 
-        def __init__(self, _argv):
-            pass
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
 
-        def setApplicationName(self, _name):
-            pass
-
-        def setStyleSheet(self, _stylesheet):
-            pass
-
-        def setWindowIcon(self, _icon):
-            pass
-
-    monkeypatch.setattr(gui_app, "set_windows_app_id", lambda: events.append("identity"))
-    monkeypatch.setattr(gui_app, "QApplication", FakeApplication)
-    monkeypatch.setattr(gui_app, "install_wheel_guard", lambda _app: None)
-    monkeypatch.setattr(gui_app, "resource_path", lambda _path: tmp_path / "missing.ico")
-
-    create_application([])
-
-    assert events == ["identity", "application"]
+    assert completed.stdout.strip().splitlines()[-1] == "NONE"
 
 
 def test_source_gui_uses_window_icon():
