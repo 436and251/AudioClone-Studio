@@ -264,7 +264,7 @@ python -m voice_pipeline --help
 分别检查训练代码目录、训练环境的 `python.exe`、模块入口 `voice_pipeline`，然后在训练模块目录执行：
 
 ```powershell
-& 'D:\path\to\python.exe' -m voice_pipeline module describe --json
+python -m voice_pipeline module describe --json
 ```
 
 ### 重启后找不到模型
