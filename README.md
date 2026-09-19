@@ -26,7 +26,7 @@ AudioMiner / AudioClone Studio 是本地语音素材挖掘工具：输入本地�
 
 支持 Windows 10/11、Python 3.12、FFmpeg。NVIDIA GPU 推荐但不是必需；CPU 可以运行，但人声分离、ASR 和后续训练会明显慢很多。
 
-## 一、安装 AudioMiner
+## 一、安装 AudioMiner / AudioClone-Studio 
 
 ### 1. 获取源码
 
@@ -74,7 +74,7 @@ python .\voice_dataset_builder.py
 
 不要执行 `.venv/Scripts/` 或 `venv/Scripts/`：目录不是命令。当前仓库默认环境目录名是 `venv`，激活命令必须使用 Windows 反斜杠路径。
 
-## 二、只使用素材挖掘
+## 二、只使用AudioMiner功能
 
 GUI 示例：
 依次填写素材、输出目录、说话人、语言和 ASR 模型，然后开始处理。GUI 当前始终执行 Demucs；已经是干净人声、需要跳过分离时，请使用下方 CLI 的 `--skip-separation`。
@@ -179,13 +179,13 @@ $pipelinePython = 'D:\path\to\.venv-gpt-sovits\Scripts\python.exe'
 
 第一条应返回 `protocol_version: 2`，第二条必须全部通过后再训练。
 
-### 3. 在 AudioMiner 中连接
+### 3. 在 AudioClone-Studio 中连接
 
 页面示例：
 
 ![连接voice-pipeline训练框架](assets/gui_example3.png)
 
-重新启动 AudioMiner，打开“设置 → 训练模块 → 添加”，填写：
+重新启动 AudioClone-Studio ，打开“设置 → 训练模块 → 添加”，填写：
 
 ```text
 名称：GPT-SoVITS
@@ -212,15 +212,15 @@ Python：训练环境中的 python.exe
 
 ## 五、目录与自动清理
 
-| 位置 | 内容 | 生命周期 |
-|---|---|---|
-| AudioMiner 设置中的默认输出目录 | clips、清单、转录、素材缓存 | 用户数据；成功后仅压缩大型中间文件 |
-| AudioMiner 设置中的模型目录 | Hugging Face/Whisper、Torch/Demucs 缓存 | 共享模型资源，不自动删除 |
-| `voice-pipeline/models/pretrained/` | 公共预训练权重 | 必需资源，不自动删除 |
-| `voice-pipeline/models/<目标人>/` | 已人工晋升的正式模型 | 永久保留，供历史与推理使用 |
-| `voice-pipeline/runs/<目标人>/` | 训练、评测、A/B/C 候选 | 晋升前保留；晋升后清理原始 checkpoint，但保留评测候选和试听 |
-| `voice-pipeline/outputs/<目标人>/` | 最终推理 WAV | 用户输出，不自动删除 |
-| `voice-pipeline/jobs/<job_id>/` | 协议快照、事件、失败诊断和临时推理请求 | 按下述规则自动清理 |
+| 位置                                       | 内容 | 生命周期 |
+|------------------------------------------|---|---|
+| AudioMiner /AudioClone-Studio 设置中的默认输出目录 | clips、清单、转录、素材缓存 | 用户数据；成功后仅压缩大型中间文件 |
+| AudioMiner /AudioClone-Studio 设置中的模型目录                     | Hugging Face/Whisper、Torch/Demucs 缓存 | 共享模型资源，不自动删除 |
+| `voice-pipeline/models/pretrained/`      | 公共预训练权重 | 必需资源，不自动删除 |
+| `voice-pipeline/models/<目标人>/`           | 已人工晋升的正式模型 | 永久保留，供历史与推理使用 |
+| `voice-pipeline/runs/<目标人>/`             | 训练、评测、A/B/C 候选 | 晋升前保留；晋升后清理原始 checkpoint，但保留评测候选和试听 |
+| `voice-pipeline/outputs/<目标人>/`          | 最终推理 WAV | 用户输出，不自动删除 |
+| `voice-pipeline/jobs/<job_id>/`          | 协议快照、事件、失败诊断和临时推理请求 | 按下述规则自动清理 |
 
 jobs 自动清理规则：
 
