@@ -297,11 +297,43 @@ def test_dataset_completion_offers_explicit_continue_and_prefills_training(tmp_p
     app.processEvents()
 
     assert window.dataset_page.continue_training.isVisibleTo(window.dataset_page)
+    window.training_page.tabs.setCurrentIndex(2)
+    window.navigation.set_current(1)
+    window.pages.setCurrentIndex(0)
     window.dataset_page.continue_training.click()
     app.processEvents()
 
     assert window.pages.currentIndex() == 1
+    assert window.training_page.tabs.currentIndex() == 0
     assert Path(window.training_page.form.dataset_edit.text()) == dataset.resolve()
+    window.close()
+
+
+def test_continue_to_training_explains_when_completed_dataset_was_removed(tmp_path):
+    from tts_builder.gui.studio_window import StudioWindow
+
+    app = create_application([])
+    binding = _binding(tmp_path)
+    output = tmp_path / "Acane"
+    output.mkdir()
+    dataset = output / "dataset.list"
+    dataset.write_text("clip.wav|Acane|ja|test\n", encoding="utf-8")
+    settings = AppSettings(
+        first_run_completed=True,
+        model_root=tmp_path / "models",
+        output_root=output,
+        training_modules=(binding[0],),
+    )
+    controller = FakeDatasetController()
+    window = StudioWindow(settings, (binding,), controller)
+    controller.task_completed.emit(SimpleNamespace(accepted=1, rejected=0))
+    app.processEvents()
+    dataset.unlink()
+
+    window.dataset_page.continue_training.click()
+
+    assert window.dataset_page.status.text() == "Training data is no longer available."
+    assert window.pages.currentIndex() == 0
     window.close()
 
 

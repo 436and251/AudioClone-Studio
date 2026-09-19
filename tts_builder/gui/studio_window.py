@@ -72,6 +72,8 @@ class StudioWindow(QMainWindow):
 
     def _continue_training(self, dataset: str) -> None:
         self.training_page.prefill_dataset(Path(dataset))
+        self.training_page.tabs.setCurrentIndex(0)
+        self.pages.setCurrentWidget(self.training_page)
         self.navigation.set_current(1)
 
     def _fit_to_screen(self) -> None:

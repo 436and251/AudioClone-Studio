@@ -259,7 +259,11 @@ class DatasetPage(QWidget):
 
     def _continue_training(self) -> None:
         dataset = Path(self.output.text()).expanduser().resolve() / "dataset.list"
-        if self.training_available and dataset.is_file():
+        if not dataset.is_file():
+            self.status.setStyleSheet(f"color:{FAILED}")
+            self._set_status("training.dataset_missing")
+            return
+        if self.training_available:
             self.training_requested.emit(str(dataset))
 
     def _browse_output(self) -> None:
