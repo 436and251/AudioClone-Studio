@@ -74,7 +74,7 @@ python .\voice_dataset_builder.py
 
 ## 二、只使用素材挖掘
 
-GUI 中依次填写素材、本次输出目录、项目名/说话人和语言，然后开始处理。已经是干净人声时可勾选跳过 Demucs。
+GUI 中依次填写素材、输出目录、说话人、语言和 ASR 模型，然后开始处理。GUI 当前始终执行 Demucs；已经是干净人声、需要跳过分离时，请使用下方 CLI 的 `--skip-separation`。
 
 CLI 示例：
 
