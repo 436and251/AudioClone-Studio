@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPushButton, QTabWidget,
+    QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QTabWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -69,8 +69,11 @@ class TrainingPage(QWidget):
 
         self.tabs = QTabWidget()
         self._tab_ids = ("config", "candidates", "inference")
-        self.config_page = QWidget()
-        config_layout = QVBoxLayout(self.config_page)
+        self.config_page = QScrollArea()
+        self.config_page.setWidgetResizable(True)
+        config_content = QWidget()
+        self.config_page.setWidget(config_content)
+        config_layout = QVBoxLayout(config_content)
         config_layout.setContentsMargins(0, 14, 0, 0)
         config_layout.setSpacing(14)
         self.candidate_page = CandidatePage(locale_controller)
@@ -78,7 +81,7 @@ class TrainingPage(QWidget):
         self.tabs.addTab(self.config_page, "")
         self.tabs.addTab(self.candidate_page, "")
         self.tabs.addTab(self.inference_page, "")
-        layout.addWidget(self.tabs)
+        layout.addWidget(self.tabs, 1)
 
         form_card = QFrame()
         form_card.setObjectName("Card")
@@ -88,14 +91,12 @@ class TrainingPage(QWidget):
         config_layout.addWidget(form_card)
 
         actions = QHBoxLayout()
-        self.status = QLabel()
-        self.status.setStyleSheet(f"color:{MUTED}")
         self.stop_button = QPushButton()
         self.stop_button.setObjectName("Danger")
         self.retry_button = QPushButton()
         self.start_button = QPushButton()
         self.start_button.setObjectName("Primary")
-        actions.addWidget(self.status, 1)
+        actions.addStretch(1)
         actions.addWidget(self.retry_button)
         actions.addWidget(self.stop_button)
         actions.addWidget(self.start_button)
@@ -115,14 +116,21 @@ class TrainingPage(QWidget):
         self.error_summary.hide()
         progress_layout.addWidget(self.progress)
         progress_layout.addWidget(self.error_summary)
-        config_layout.addWidget(self.progress_card)
+        layout.addWidget(self.progress_card)
         self.progress_card.hide()
+
+        self.operation_status = QLabel()
+        self.operation_status.setObjectName("OperationStatus")
+        self.operation_status.setStyleSheet(f"color:{MUTED}")
+        self.operation_status.setWordWrap(True)
+        self.status = self.operation_status
+        layout.addWidget(self.operation_status)
 
         self.activity_panel = LogPanel(self.translator)
         self.activity = self.activity_panel.view
         self.activity.setMaximumBlockCount(500)
         self.activity.setMaximumHeight(190)
-        config_layout.addWidget(self.activity_panel)
+        layout.addWidget(self.activity_panel)
         config_layout.addStretch(1)
 
         self.form.validity_changed.connect(self._update_actions)
@@ -224,14 +232,28 @@ class TrainingPage(QWidget):
             self._show_error(str(error))
 
     def _event(self, event: ModuleEvent) -> None:
-        self.progress_card.show()
+        if event.stage is not None:
+            self.progress_card.show()
         self.progress.consume(event)
         message = _event_text(event)
-        self._append_activity(f"{event.type} · {message}" if message else event.type)
+        if event.type not in {"stage_progress", "inference_progress"}:
+            self._append_activity(f"{event.type} · {message}" if message else event.type)
         if event.type in {"stage_failed", "job_failed"}:
             self._show_error(message or event.type)
         elif event.type == "job_cancelled":
             self.status.setText(self.translator.text("status.stopped"))
+        elif event.type == "inference_progress" and event.total:
+            self.status.setText(self.translator.text(
+                "inference.progress", current=int(event.current or 0), total=int(event.total)
+            ))
+        elif event.type == "promotion_failed":
+            self.candidate_page.set_promotion_error(message or event.type)
+            self.status.setText(message or event.type)
+            self.tabs.setCurrentIndex(1)
+        elif event.type == "inference_failed":
+            self.inference_page.set_error(message or event.type)
+            self.status.setText(message or event.type)
+            self.tabs.setCurrentIndex(2)
         for artifact in event.artifacts:
             artifact_type = artifact.get("type")
             if artifact_type == "listening_manifest":
@@ -252,10 +274,21 @@ class TrainingPage(QWidget):
         if event.type == "promotion_completed" and self._pending_promoted_model is not None:
             self.inference_page.set_model(self._pending_promoted_model)
             self._pending_promoted_model = None
+            self.candidate_page.set_promoted()
+            self.status.setText(self.translator.text("training.promoted"))
+            self.tabs.setCurrentIndex(2)
 
     def _stderr(self, text: str) -> None:
         for line in text.splitlines():
-            if line:
+            lowered = line.casefold()
+            if line and (
+                line.startswith("Error:")
+                or " failed:" in line
+                or "error" in lowered
+                or "exception" in lowered
+                or "traceback" in lowered
+                or "out of memory" in lowered
+            ):
                 self._append_activity(line)
 
     def _protocol_failed(self, message: str) -> None:
@@ -263,11 +296,16 @@ class TrainingPage(QWidget):
         if self._operation == "infer":
             self.inference_page.set_error(message)
             self.tabs.setCurrentIndex(2)
+        elif self._operation == "promote":
+            self.candidate_page.set_promotion_error(message)
+            self.status.setText(message)
+            self.tabs.setCurrentIndex(1)
         else:
             self._show_error(message)
 
     def _completed(self, returncode: int) -> None:
         self._set_running(False)
+        operation = self._operation
         if returncode == 0:
             key = {
                 "promote": "training.promoted",
@@ -282,12 +320,17 @@ class TrainingPage(QWidget):
                 self.inference_page.set_error(message)
                 self.tabs.setCurrentIndex(2)
                 self.status.setText(self.translator.text("training.failed"))
+            elif self._operation == "promote":
+                self.candidate_page.set_promotion_error(message)
+                self.tabs.setCurrentIndex(1)
+                self.status.setText(self.translator.text("training.failed"))
             else:
                 self._show_error(message)
             if self._operation == "promote":
                 self._pending_promoted_model = None
         self._operation = "run"
-        self._recover_promoted_model()
+        if not (returncode != 0 and operation == "promote"):
+            self._recover_promoted_model()
 
     def _show_error(self, message: str) -> None:
         self.progress_card.show()
@@ -317,6 +360,7 @@ class TrainingPage(QWidget):
         if self._running:
             return
         self.inference_page.set_model(None)
+        self.candidate_page.clear_promotion()
         self.failed_job = None
         self._update_retry_button()
         project_name = self.form.project_name.text().strip()
@@ -338,6 +382,8 @@ class TrainingPage(QWidget):
         except (OSError, ValueError):
             return
         self.inference_page.set_model(model)
+        if model is not None:
+            self.candidate_page.set_promoted()
         self._update_retry_button()
 
     def _update_retry_button(self) -> None:
@@ -367,8 +413,11 @@ class TrainingPage(QWidget):
             return
         try:
             self._operation = "promote"
+            self.candidate_page.set_promoting(selection)
             self._set_running(True)
-            self.status.setText(self.translator.text("training.promoting"))
+            self.status.setText(self.translator.text(
+                "candidate.promoting", name=selection[-1]
+            ))
             self.process.promote(self.job_path, selection)
         except Exception as error:
             self._operation = "run"

@@ -49,7 +49,7 @@ class StudioWindow(QMainWindow):
             ),
         )
         self.pages.addWidget(self._scroll(self.dataset_page))
-        self.pages.addWidget(self._scroll(self.training_page))
+        self.pages.addWidget(self.training_page)
         self.navigation.selection_changed.connect(self.pages.setCurrentIndex)
         self.dataset_page.training_requested.connect(self._continue_training)
         layout.addWidget(self.navigation)

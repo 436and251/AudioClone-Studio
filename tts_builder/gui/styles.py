@@ -14,6 +14,39 @@ QLabel#FieldChip {
     font-weight: 500;
 }
 QFrame#Card { background: #181818; border: 1px solid #282828; border-radius: 15px; }
+QFrame#CandidateHero {
+    background: #17231B;
+    border: 1px solid #245C36;
+    border-radius: 15px;
+}
+QLabel#CandidateIcon {
+    background: #1ED760;
+    color: #06130A;
+    border-radius: 19px;
+    min-width: 38px;
+    min-height: 38px;
+    max-width: 38px;
+    max-height: 38px;
+    qproperty-alignment: AlignCenter;
+    font-size: 21px;
+    font-weight: 800;
+}
+QLabel#CandidateTitle { font-size: 21px; font-weight: 750; }
+QLabel#CandidateStatus, QLabel#OperationStatus {
+    background: #202020;
+    border-radius: 9px;
+    padding: 8px 11px;
+    color: #B3B3B3;
+}
+QLabel#CandidateStatus[state="success"] { color: #1ED760; }
+QLabel#CandidateStatus[state="failed"] { color: #FF6B6B; }
+QFrame#CandidateSample {
+    background: #222222;
+    border: none;
+    border-radius: 10px;
+}
+QLabel#LanguageChip { color: #1ED760; font-weight: 700; }
+QRadioButton#CandidateChoice { font-size: 20px; font-weight: 750; spacing: 9px; }
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     background: #242424;
     border: 1px solid #333333;
@@ -61,7 +94,7 @@ QPushButton:disabled { color: #777777; background: #202020; }
 QPushButton#Primary { background: #1ED760; color: #06130A; border-radius: 20px; padding: 11px 22px; font-weight: 700; }
 QPushButton#Primary:hover { background: #25E46A; }
 QPushButton#Danger { color: #FF8A8A; }
-QProgressBar { background: #2A2A2A; border: none; border-radius: 3px; height: 6px; text-align: center; color: transparent; }
+QProgressBar { background: #2A2A2A; border: none; border-radius: 8px; min-height: 18px; text-align: center; color: #FFFFFF; }
 QProgressBar::chunk { background: #1ED760; border-radius: 3px; }
 QPlainTextEdit { background: #101010; border: 1px solid #282828; border-radius: 10px; color: #B3B3B3; padding: 8px; }
 QToolButton {

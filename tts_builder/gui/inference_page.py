@@ -45,6 +45,10 @@ class InferencePage(QWidget):
         self.model_hint.setWordWrap(True)
         self.model_hint.setStyleSheet(f"color:{MUTED}")
         layout.addWidget(self.model_hint)
+        self.busy_hint = QLabel()
+        self.busy_hint.setObjectName("OperationStatus")
+        self.busy_hint.hide()
+        layout.addWidget(self.busy_hint)
 
         form = QFormLayout()
         self.text = QPlainTextEdit()
@@ -117,6 +121,8 @@ class InferencePage(QWidget):
 
     def set_busy(self, busy: bool) -> None:
         self._busy = busy
+        self.busy_hint.setVisible(busy)
+        self.busy_hint.setText(self.translator.text("inference.running"))
         self._update_actions()
 
     def set_result(self, path: Path) -> None:
@@ -144,9 +150,12 @@ class InferencePage(QWidget):
         for index in range(self.language.count()):
             code = self.language.itemData(index)
             self.language.setItemText(index, translator.text(f"language.{code}"))
-        self.start_button.setText(translator.text("inference.start"))
+        self.start_button.setText(translator.text(
+            "inference.running" if self._busy else "inference.start"
+        ))
         self.play_button.setText(translator.text("inference.play"))
         self.open_button.setText(translator.text("inference.open"))
+        self.busy_hint.setText(translator.text("inference.running"))
         self._update_model_hint()
 
     def _update_model_hint(self) -> None:
@@ -167,6 +176,9 @@ class InferencePage(QWidget):
         available = self.result is not None and self.result.is_file() and not self._busy
         self.play_button.setEnabled(available)
         self.open_button.setEnabled(available)
+        self.start_button.setText(self.translator.text(
+            "inference.running" if self._busy else "inference.start"
+        ))
 
     def _request(self) -> None:
         text = self.text.toPlainText().strip() or None

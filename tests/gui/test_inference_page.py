@@ -50,6 +50,26 @@ def test_inference_page_stays_editable_but_locked_without_promoted_model(tmp_pat
     page.close()
 
 
+def test_inference_button_immediately_shows_generating_state(tmp_path):
+    from tts_builder.gui.inference_page import InferencePage
+
+    app = create_application([])
+    page = InferencePage(LocaleController("en"))
+    model = tmp_path / "model"
+    model.mkdir()
+    page.set_model(model)
+    page.text.setPlainText("Hello")
+    page.inference_requested.connect(lambda _request: page.set_busy(True))
+
+    page.start_button.click()
+    app.processEvents()
+
+    assert not page.start_button.isEnabled()
+    assert page.start_button.text() == "Generating speech…"
+    assert page.busy_hint.isVisibleTo(page)
+    page.close()
+
+
 def test_inference_page_emits_input_plays_result_opens_directory_and_hides_toast(
     tmp_path, monkeypatch
 ):

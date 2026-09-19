@@ -24,6 +24,7 @@ from tts_builder.training_modules.models import (
     ModuleEvent,
     TrainingDataDescriptor,
 )
+from tts_builder.training_modules.artifacts import load_listening_manifest
 
 
 class FakeModuleProcess(QObject):
@@ -172,7 +173,12 @@ def test_training_workspace_has_three_fixed_localized_pages(tmp_path, locale, la
     assert page.tabs.widget(1) is page.candidate_page
     assert page.tabs.widget(2) is page.inference_page
     assert page.config_page.isAncestorOf(page.form)
-    assert page.config_page.isAncestorOf(page.progress)
+    assert page.isAncestorOf(page.progress)
+    assert not page.config_page.isAncestorOf(page.progress)
+    assert page.isAncestorOf(page.activity_panel)
+    assert not page.config_page.isAncestorOf(page.activity_panel)
+    assert page.isAncestorOf(page.operation_status)
+    assert not page.config_page.isAncestorOf(page.operation_status)
     assert not page.candidate_page.isAncestorOf(page.form)
     assert page.progress_card.isHidden()
     assert not page.activity_panel.toggle.isChecked()
@@ -247,6 +253,7 @@ def test_training_progress_and_errors_are_immediately_visible_and_bounded(tmp_pa
     app.processEvents()
     assert page.progress.rows["s2"].bar.value() == 25
     assert page.progress.rows["s2"].status.text() == "进行中"
+    assert "stage_progress" not in page.activity.toPlainText()
 
     process.event_received.emit(ModuleEvent(
         1, "job", "stage_failed", "now", stage="s2",
@@ -255,7 +262,8 @@ def test_training_progress_and_errors_are_immediately_visible_and_bounded(tmp_pa
     process.stderr_received.emit("CUDA out of memory")
     app.processEvents()
     assert page.error_summary.isVisibleTo(page)
-    assert page.config_page.isAncestorOf(page.error_summary)
+    assert page.isAncestorOf(page.error_summary)
+    assert not page.config_page.isAncestorOf(page.error_summary)
     assert "CUDA OOM" in page.error_summary.text()
     assert "CUDA out of memory" in page.activity.toPlainText()
     assert page.activity.maximumBlockCount() == 500
@@ -327,13 +335,53 @@ def test_listening_artifact_enables_human_promotion_and_failure_keeps_candidates
     page.candidate_page.cards[0].select.click()
     page.candidate_page.promote_button.click()
     assert process.promoted == [(job, "candidate_A")]
+    assert page.candidate_page.promote_button.text() == "Promoting A…"
+    assert "Promoting A" in page.operation_status.text()
     process.completed.emit(2)
     app.processEvents()
 
     assert len(page.candidate_page.cards) == 3
-    assert page.tabs.currentIndex() == 0
-    assert page.error_summary.isVisibleTo(page)
-    assert page.config_page.isAncestorOf(page.error_summary)
+    assert page.tabs.currentIndex() == 1
+    assert page.candidate_page.operation_hint.isVisibleTo(page.candidate_page)
+    assert "code 2" in page.candidate_page.operation_hint.text()
+    page.close()
+
+
+def test_successful_promotion_shows_feedback_and_opens_inference(tmp_path, monkeypatch):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    process = FakeModuleProcess()
+    page = TrainingPage(
+        (_binding(tmp_path),), LocaleController("en"),
+        process_factory=lambda _setting: process,
+    )
+    page.attach_process(process)
+    job = tmp_path / "job.json"
+    job.write_text("{}", encoding="utf-8")
+    page.job_path = job
+    page.candidate_page.set_candidates(load_listening_manifest(
+        _listening_manifest(tmp_path / "listening"),
+        (tmp_path / "listening").resolve(),
+    ))
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args, **_kwargs: QMessageBox.Yes)
+    page.candidate_page.cards[0].select.click()
+    page.candidate_page.promote_button.click()
+
+    model = tmp_path / "models" / "Acane"
+    model.mkdir(parents=True)
+    process.event_received.emit(ModuleEvent(
+        1, "job", "artifact", "now",
+        artifacts=({"type": "promoted_model", "path": str(model.resolve())},),
+    ))
+    process.event_received.emit(ModuleEvent(1, "job", "promotion_completed", "now"))
+    app.processEvents()
+
+    assert page.tabs.currentIndex() == 2
+    assert page.inference_page.model == model.resolve()
+    assert "promoted" in page.operation_status.text().lower()
+    assert page.candidate_page.promoted_id == "candidate_A"
+    assert not page.candidate_page.promote_button.isEnabled()
     page.close()
 
 
@@ -428,9 +476,12 @@ def test_idle_form_identity_recovers_and_relocks_promoted_model(tmp_path):
         setting.project_root.resolve(), module.module_id, primary.id, "Acane"
     )
     assert page.inference_page.model == model.resolve()
+    assert page.candidate_page.operation_hint.text() == "A promoted model is ready."
+    assert not page.candidate_page.promote_button.isEnabled()
 
     page.form.project_name.setText("Other")
     assert page.inference_page.model is None
+    assert page.candidate_page.operation_hint.isHidden()
     page.form.project_name.setText("Acane")
     assert page.inference_page.model == model.resolve()
     page.form.framework_combo.setCurrentIndex(1)
