@@ -173,8 +173,38 @@ def test_settings_action_applies_accepted_values_to_the_live_window(tmp_path, mo
     window.close()
 
 
-def test_source_gui_uses_window_icon_without_packaged_shell_identity():
+def test_source_gui_sets_shell_identity_before_creating_qapplication(monkeypatch, tmp_path):
+    events = []
+
+    class FakeApplication:
+        @classmethod
+        def instance(cls):
+            events.append("application")
+            return None
+
+        def __init__(self, _argv):
+            pass
+
+        def setApplicationName(self, _name):
+            pass
+
+        def setStyleSheet(self, _stylesheet):
+            pass
+
+        def setWindowIcon(self, _icon):
+            pass
+
+    monkeypatch.setattr(gui_app, "set_windows_app_id", lambda: events.append("identity"))
+    monkeypatch.setattr(gui_app, "QApplication", FakeApplication)
+    monkeypatch.setattr(gui_app, "install_wheel_guard", lambda _app: None)
+    monkeypatch.setattr(gui_app, "resource_path", lambda _path: tmp_path / "missing.ico")
+
+    create_application([])
+
+    assert events == ["identity", "application"]
+
+
+def test_source_gui_uses_window_icon():
     app = create_application([])
 
-    assert not hasattr(gui_app, "set_windows_app_id")
     assert app.windowIcon().isNull() is False

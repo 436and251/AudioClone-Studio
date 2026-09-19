@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, QUrl, Signal
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QFileDialog, QFormLayout, QHBoxLayout, QLabel, QComboBox, QLineEdit,
-    QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QLabel,
+    QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit, QPushButton,
+    QVBoxLayout, QWidget,
 )
 
 from .audio_player import AudioPlayer
@@ -25,6 +26,7 @@ class InferenceInput:
 
 class InferencePage(QWidget):
     inference_requested = Signal(object)
+    model_selected = Signal(object)
 
     def __init__(self, locale_controller: LocaleController, parent=None, *, player=None):
         super().__init__(parent)
@@ -33,23 +35,58 @@ class InferencePage(QWidget):
         self.player = player or AudioPlayer(self)
         self.model: Path | None = None
         self.result: Path | None = None
+        self._results: dict[Path, Path] = {}
         self._busy = False
 
-        layout = QVBoxLayout(self)
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 14, 0, 0)
+        outer.setSpacing(14)
+
+        history_card = QFrame()
+        history_card.setObjectName("Card")
+        history_card.setMinimumWidth(210)
+        history_card.setMaximumWidth(260)
+        history_layout = QVBoxLayout(history_card)
+        self.history_title = QLabel()
+        self.history_title.setObjectName("CandidateTitle")
+        history_layout.addWidget(self.history_title)
+        self.history = QListWidget()
+        self.history.setObjectName("ModelHistory")
+        self.history.currentItemChanged.connect(self._history_changed)
+        history_layout.addWidget(self.history, 1)
+        outer.addWidget(history_card)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
+        outer.addWidget(content, 1)
+
+        hero = QFrame()
+        hero.setObjectName("InferenceHero")
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(18, 16, 18, 16)
+        self.hero_icon = QLabel("♫")
+        self.hero_icon.setObjectName("InferenceIcon")
+        hero_layout.addWidget(self.hero_icon, 0, Qt.AlignTop)
+        hero_text = QVBoxLayout()
         self.title = QLabel()
-        self.title.setObjectName("Subtitle")
-        layout.addWidget(self.title)
+        self.title.setObjectName("CandidateTitle")
+        hero_text.addWidget(self.title)
         self.model_hint = QLabel()
         self.model_hint.setWordWrap(True)
         self.model_hint.setStyleSheet(f"color:{MUTED}")
-        layout.addWidget(self.model_hint)
+        hero_text.addWidget(self.model_hint)
         self.busy_hint = QLabel()
         self.busy_hint.setObjectName("OperationStatus")
         self.busy_hint.hide()
-        layout.addWidget(self.busy_hint)
+        hero_text.addWidget(self.busy_hint)
+        hero_layout.addLayout(hero_text, 1)
+        layout.addWidget(hero)
 
+        form_card = QFrame()
+        form_card.setObjectName("Card")
+        form_layout = QVBoxLayout(form_card)
         form = QFormLayout()
         self.text = QPlainTextEdit()
         self.text.setMaximumHeight(130)
@@ -75,7 +112,8 @@ class InferencePage(QWidget):
         self.device.addItem("CPU", "cpu")
         self.device_label = self._label("inference.device")
         form.addRow(self.device_label, self.device)
-        layout.addLayout(form)
+        form_layout.addLayout(form)
+        layout.addWidget(form_card)
 
         self.error = QLabel()
         self.error.setWordWrap(True)
@@ -114,10 +152,50 @@ class InferencePage(QWidget):
         label.setProperty("translation_key", key)
         return label
 
+    def set_models(
+        self,
+        models: tuple[Path, ...],
+        *,
+        results: dict[Path, Path] | None = None,
+        selected: Path | None = None,
+    ) -> None:
+        resolved = tuple(Path(path).resolve() for path in models)
+        self._results = {
+            Path(model).resolve(): Path(audio).resolve()
+            for model, audio in (results or {}).items()
+        }
+        preferred = Path(selected).resolve() if selected is not None else None
+        self.history.blockSignals(True)
+        self.history.clear()
+        for model in resolved:
+            item = QListWidgetItem(model.name)
+            item.setData(Qt.UserRole, str(model))
+            self.history.addItem(item)
+        if resolved:
+            self.history.setCurrentRow(
+                resolved.index(preferred) if preferred in resolved else 0
+            )
+        self.history.blockSignals(False)
+        self._select_model(
+            resolved[self.history.currentRow()] if resolved else None,
+            emit=bool(resolved),
+        )
+
     def set_model(self, path: Path | None) -> None:
-        self.model = Path(path).resolve() if path is not None else None
-        self._update_model_hint()
-        self._update_actions()
+        model = Path(path).resolve() if path is not None else None
+        if model is not None:
+            for index in range(self.history.count()):
+                if Path(self.history.item(index).data(Qt.UserRole)) == model:
+                    self.history.setCurrentRow(index)
+                    self._select_model(model, emit=False)
+                    return
+            item = QListWidgetItem(model.name)
+            item.setData(Qt.UserRole, str(model))
+            self.history.insertItem(0, item)
+            self.history.setCurrentItem(item)
+            return
+        self.history.clearSelection()
+        self._select_model(None, emit=False)
 
     def set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -125,14 +203,20 @@ class InferencePage(QWidget):
         self.busy_hint.setText(self.translator.text("inference.running"))
         self._update_actions()
 
-    def set_result(self, path: Path) -> None:
-        self.result = Path(path).resolve()
+    def set_result(self, path: Path | None) -> None:
+        self.result = Path(path).resolve() if path is not None else None
+        if self.model is not None:
+            if self.result is None:
+                self._results.pop(self.model, None)
+            else:
+                self._results[self.model] = self.result
         self.error.hide()
-        self.toast.setText(
-            self.translator.text("inference.output_toast", path=str(self.result.parent))
-        )
-        self.toast.show()
-        self.toast_timer.start()
+        if self.result is not None:
+            self.toast.setText(self.translator.text(
+                "inference.output_toast", path=str(self.result.parent)
+            ))
+            self.toast.show()
+            self.toast_timer.start()
         self._update_actions()
 
     def set_error(self, message: str) -> None:
@@ -141,7 +225,7 @@ class InferencePage(QWidget):
 
     def retranslate_ui(self, translator: Translator) -> None:
         self.translator = translator
-        self.title.setText(translator.text("inference.title"))
+        self.history_title.setText(translator.text("inference.history"))
         for label in (
             self.text_label, self.txt_label, self.language_label, self.device_label
         ):
@@ -150,17 +234,34 @@ class InferencePage(QWidget):
         for index in range(self.language.count()):
             code = self.language.itemData(index)
             self.language.setItemText(index, translator.text(f"language.{code}"))
-        self.start_button.setText(translator.text(
-            "inference.running" if self._busy else "inference.start"
-        ))
         self.play_button.setText(translator.text("inference.play"))
         self.open_button.setText(translator.text("inference.open"))
         self.busy_hint.setText(translator.text("inference.running"))
         self._update_model_hint()
+        self._update_actions()
+
+    def _history_changed(self, current, _previous) -> None:
+        if current is not None:
+            self._select_model(Path(current.data(Qt.UserRole)), emit=True)
+
+    def _select_model(self, model: Path | None, *, emit: bool) -> None:
+        self.model = Path(model).resolve() if model is not None else None
+        result = self._results.get(self.model) if self.model is not None else None
+        self.result = result if result is not None and result.is_file() else None
+        self.error.hide()
+        self._update_model_hint()
+        self._update_actions()
+        if emit and self.model is not None:
+            self.model_selected.emit(self.model)
 
     def _update_model_hint(self) -> None:
-        key = "inference.no_model" if self.model is None else "inference.model_ready"
-        values = {} if self.model is None else {"path": str(self.model)}
+        ready = self.model is not None
+        self.hero_icon.setText("♫" if ready else "○")
+        self.title.setText(self.translator.text(
+            "inference.ready_title" if ready else "inference.empty_title"
+        ))
+        key = "inference.model_ready" if ready else "inference.no_model"
+        values = {"name": self.model.name} if ready else {}
         self.model_hint.setText(self.translator.text(key, **values))
 
     def _update_actions(self, *_):

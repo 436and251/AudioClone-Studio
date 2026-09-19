@@ -480,7 +480,7 @@ def test_idle_form_identity_recovers_and_relocks_promoted_model(tmp_path):
     assert not page.candidate_page.promote_button.isEnabled()
 
     page.form.project_name.setText("Other")
-    assert page.inference_page.model is None
+    assert page.inference_page.model == model.resolve()
     assert page.candidate_page.operation_hint.isHidden()
     page.form.project_name.setText("Acane")
     assert page.inference_page.model == model.resolve()

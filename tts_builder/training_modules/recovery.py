@@ -21,6 +21,47 @@ class FailedJob:
     stage: str
 
 
+@dataclass(frozen=True)
+class ModelHistoryItem:
+    model: Path
+    job_path: Path
+    latest_audio: Path | None
+
+
+_BUNDLE_FILES = (
+    "model.yaml",
+    "metadata.json",
+    "weights/s1.ckpt",
+    "weights/s2.pth",
+    "reference/default.json",
+    "reference/default.wav",
+)
+
+
+def local_model_history(
+    project_root: Path, module_id: str, framework: str
+) -> tuple[ModelHistoryItem, ...]:
+    raw_root = Path(project_root)
+    if not raw_root.is_absolute() or not raw_root.is_dir():
+        return ()
+    root = raw_root.resolve()
+    models_root = (root / "models").resolve()
+    if models_root.parent != root or not models_root.is_dir():
+        return ()
+    found: list[ModelHistoryItem] = []
+    seen: set[Path] = set()
+    for _, directory, job, journal in _candidate_jobs(root):
+        project_name = _job_project_name(job, directory, root, module_id, framework)
+        if project_name is None:
+            continue
+        model = _completed_model(journal, root, directory.name)
+        if model is None or model in seen or not _complete_local_bundle(model, models_root):
+            continue
+        seen.add(model)
+        found.append(ModelHistoryItem(model, job, _latest_audio(root, project_name)))
+    return tuple(found)
+
+
 def latest_promoted_model(
     project_root: Path,
     module_id: str,
@@ -140,6 +181,53 @@ def _matching_job(
     ):
         return None
     return job_id
+
+
+def _job_project_name(
+    job: Path,
+    directory: Path,
+    root: Path,
+    module_id: str,
+    framework: str,
+) -> str | None:
+    try:
+        if job.stat().st_size > MAX_JOB_BYTES:
+            return None
+        payload = json.loads(job.read_text(encoding="utf-8", errors="strict"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    project_name = payload.get("project_name")
+    if not isinstance(project_name, str) or not project_name:
+        return None
+    return project_name if _matching_job(
+        job, directory, root, module_id, framework, project_name
+    ) is not None else None
+
+
+def _complete_local_bundle(model: Path, models_root: Path) -> bool:
+    try:
+        model = model.resolve()
+        return (
+            model.parent == models_root
+            and all((model / relative).is_file() for relative in _BUNDLE_FILES)
+        )
+    except OSError:
+        return False
+
+
+def _latest_audio(root: Path, project_name: str) -> Path | None:
+    directory = (root / "outputs" / project_name / "gui").resolve()
+    if not directory.is_dir() or not directory.is_relative_to(root):
+        return None
+    try:
+        candidates = (
+            path.resolve() for path in directory.glob("*.wav") if path.is_file()
+        )
+        return max(candidates, key=lambda path: path.stat().st_mtime_ns, default=None)
+    except OSError:
+        return None
 
 
 def _same_path(value: object, expected: Path) -> bool:

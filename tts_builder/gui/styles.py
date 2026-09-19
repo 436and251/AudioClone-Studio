@@ -19,6 +19,38 @@ QFrame#CandidateHero {
     border: 1px solid #245C36;
     border-radius: 15px;
 }
+QFrame#InferenceHero {
+    background: #17231B;
+    border: 1px solid #245C36;
+    border-radius: 15px;
+}
+QLabel#InferenceIcon {
+    background: #1ED760;
+    color: #06130A;
+    border-radius: 19px;
+    min-width: 38px;
+    min-height: 38px;
+    max-width: 38px;
+    max-height: 38px;
+    qproperty-alignment: AlignCenter;
+    font-size: 21px;
+    font-weight: 800;
+}
+QListWidget#ModelHistory {
+    background: transparent;
+    border: none;
+    outline: 0;
+}
+QListWidget#ModelHistory::item {
+    background: #222222;
+    border-radius: 9px;
+    padding: 11px 12px;
+    margin: 3px 0;
+}
+QListWidget#ModelHistory::item:selected {
+    background: #1ED760;
+    color: #06130A;
+}
 QLabel#CandidateIcon {
     background: #1ED760;
     color: #06130A;

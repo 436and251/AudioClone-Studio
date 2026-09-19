@@ -37,16 +37,44 @@ def test_inference_page_stays_editable_but_locked_without_promoted_model(tmp_pat
     ]
     assert not page.start_button.isEnabled()
     assert page.model_hint.text() == "No promoted model has been selected yet."
+    assert page.title.text() == "Select a model for inference"
 
     model = tmp_path / "model"
     model.mkdir()
-    page.set_model(model)
+    page.set_models((model,))
     assert page.start_button.isEnabled()
+    assert page.title.text() == "Generate with the selected model"
+    assert page.history.count() == 1
+    assert page.history.item(0).text() == "model"
 
     text_file = tmp_path / "input.txt"
     text_file.write_text("file", encoding="utf-8")
     page.txt_edit.setText(str(text_file))
     assert not page.start_button.isEnabled()
+    page.close()
+
+
+def test_inference_history_selects_models_and_restores_each_result(tmp_path):
+    from tts_builder.gui.inference_page import InferencePage
+
+    create_application([])
+    page = InferencePage(LocaleController("en"), player=FakePlayer())
+    first = tmp_path / "Acane"
+    second = tmp_path / "Lucy"
+    first.mkdir()
+    second.mkdir()
+    first_audio = tmp_path / "first.wav"
+    first_audio.write_bytes(b"wav")
+    selected = []
+    page.model_selected.connect(selected.append)
+
+    page.set_models((second, first), results={first.resolve(): first_audio.resolve()})
+    page.history.setCurrentRow(1)
+
+    assert selected[-1] == first.resolve()
+    assert page.model == first.resolve()
+    assert page.result == first_audio.resolve()
+    assert page.play_button.isEnabled()
     page.close()
 
 

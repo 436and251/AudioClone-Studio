@@ -18,6 +18,8 @@ from ..training_modules.models import ModuleEvent
 from ..training_modules.process import ModuleProcessController
 from ..training_modules.recovery import (
     FailedJob,
+    ModelHistoryItem,
+    local_model_history,
     latest_failed_job,
     latest_promoted_model,
 )
@@ -41,6 +43,7 @@ class TrainingPage(QWidget):
         build_inference_request: Callable[..., Path] = default_build_inference_request,
         recover_promoted_model: Callable[..., Path | None] = latest_promoted_model,
         recover_failed_job: Callable[..., FailedJob | None] = latest_failed_job,
+        recover_model_history: Callable[..., tuple[ModelHistoryItem, ...]] = local_model_history,
         process_factory: Callable[..., object] = ModuleProcessController,
     ) -> None:
         super().__init__(parent)
@@ -51,6 +54,7 @@ class TrainingPage(QWidget):
         self._build_inference_request = build_inference_request
         self._recover_model = recover_promoted_model
         self._recover_failed = recover_failed_job
+        self._recover_history = recover_model_history
         self._process_factory = process_factory
         self.process = None
         self.job_path: Path | None = None
@@ -59,6 +63,7 @@ class TrainingPage(QWidget):
         self._operation = "run"
         self._pending_promoted_model: Path | None = None
         self.failed_job: FailedJob | None = None
+        self._history_items: dict[Path, ModelHistoryItem] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 24, 30, 24)
@@ -138,14 +143,19 @@ class TrainingPage(QWidget):
         self.form.framework_combo.currentIndexChanged.connect(
             self._recover_promoted_model
         )
+        self.form.framework_combo.currentIndexChanged.connect(
+            self._refresh_model_history
+        )
         self.start_button.clicked.connect(self._start)
         self.stop_button.clicked.connect(self._stop)
         self.retry_button.clicked.connect(self._retry_failed)
         self.candidate_page.promotion_requested.connect(self._promote)
         self.inference_page.inference_requested.connect(self._infer)
+        self.inference_page.model_selected.connect(self._select_history_model)
         locale_controller.locale_changed.connect(self._locale_changed)
         self.retranslate_ui(self.translator)
         self._set_running(False)
+        self._refresh_model_history()
 
     def prefill_dataset(self, path: Path) -> None:
         self.form.prefill_dataset(path)
@@ -359,7 +369,6 @@ class TrainingPage(QWidget):
     def _recover_promoted_model(self, *_):
         if self._running:
             return
-        self.inference_page.set_model(None)
         self.candidate_page.clear_promotion()
         self.failed_job = None
         self._update_retry_button()
@@ -381,10 +390,38 @@ class TrainingPage(QWidget):
             )
         except (OSError, ValueError):
             return
-        self.inference_page.set_model(model)
         if model is not None:
+            self.inference_page.set_model(model)
             self.candidate_page.set_promoted()
         self._update_retry_button()
+
+    def _refresh_model_history(self, *_):
+        if self._running:
+            return
+        try:
+            setting, module, framework = self.form.selection()
+            if setting is None:
+                return
+            items = self._recover_history(
+                Path(setting.project_root).resolve(), module.module_id, framework.id
+            )
+        except (OSError, ValueError):
+            items = ()
+        self._history_items = {item.model: item for item in items}
+        self.inference_page.set_models(
+            tuple(self._history_items),
+            results={
+                item.model: item.latest_audio
+                for item in items
+                if item.latest_audio is not None
+            },
+            selected=self.inference_page.model,
+        )
+
+    def _select_history_model(self, model: Path) -> None:
+        item = self._history_items.get(Path(model).resolve())
+        if item is not None:
+            self.job_path = item.job_path
 
     def _update_retry_button(self) -> None:
         failed = self.failed_job
@@ -425,10 +462,15 @@ class TrainingPage(QWidget):
             self._show_error(str(error))
 
     def _infer(self, values: InferenceInput) -> None:
-        if self.process is None or self.job_path is None or self.inference_page.model is None:
+        if self.job_path is None or self.inference_page.model is None:
             self.inference_page.set_error(self.translator.text("inference.no_model"))
             return
         try:
+            if self.process is None:
+                setting, _, _ = self.form.selection()
+                if setting is None:
+                    raise ValueError(self.translator.text("training.module_unavailable"))
+                self.attach_process(self._process_factory(setting))
             request = self._build_inference_request(
                 self.job_path,
                 self.inference_page.model,
