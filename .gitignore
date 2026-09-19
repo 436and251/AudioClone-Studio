@@ -11,3 +11,6 @@ dist/
 *.spec.bak
 vendor/ffmpeg/*.exe
 docs/
+/venv/
+/.venv/
+/.idea/
