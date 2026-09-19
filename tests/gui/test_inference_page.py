@@ -50,7 +50,31 @@ def test_inference_page_stays_editable_but_locked_without_promoted_model(tmp_pat
     text_file = tmp_path / "input.txt"
     text_file.write_text("file", encoding="utf-8")
     page.txt_edit.setText(str(text_file))
-    assert not page.start_button.isEnabled()
+    assert page.start_button.isEnabled()
+    page.close()
+
+
+def test_inference_page_explains_conflicting_text_sources(tmp_path):
+    from tts_builder.gui.inference_page import InferencePage
+
+    create_application([])
+    page = InferencePage(LocaleController("en"), player=FakePlayer())
+    model = tmp_path / "model"
+    model.mkdir()
+    source = tmp_path / "input.txt"
+    source.write_text("from file", encoding="utf-8")
+    requested = []
+    page.inference_requested.connect(requested.append)
+    page.set_models((model,))
+    page.text.setPlainText("inline")
+    page.txt_edit.setText(str(source))
+
+    assert page.start_button.isEnabled()
+    page.start_button.click()
+
+    assert requested == []
+    assert page.error.text() == "Use either text or a TXT file, not both."
+    assert page.error.isVisibleTo(page)
     page.close()
 
 

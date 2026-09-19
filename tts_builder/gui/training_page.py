@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from ..training_modules.job import build_job as default_build_job
 from ..training_modules.inference import (
     build_inference_request as default_build_inference_request,
+    ensure_inference_job as default_ensure_inference_job,
 )
 from ..training_modules.artifacts import load_listening_manifest
 from ..training_modules.models import ModuleEvent
@@ -41,6 +42,7 @@ class TrainingPage(QWidget):
         *,
         build_job: Callable[..., Path] = default_build_job,
         build_inference_request: Callable[..., Path] = default_build_inference_request,
+        ensure_inference_job: Callable[..., Path] = default_ensure_inference_job,
         recover_promoted_model: Callable[..., Path | None] = latest_promoted_model,
         recover_failed_job: Callable[..., FailedJob | None] = latest_failed_job,
         recover_model_history: Callable[..., tuple[ModelHistoryItem, ...]] = local_model_history,
@@ -52,6 +54,7 @@ class TrainingPage(QWidget):
         self.translator = Translator(locale_controller.locale)
         self._build_job = build_job
         self._build_inference_request = build_inference_request
+        self._ensure_inference_job = ensure_inference_job
         self._recover_model = recover_promoted_model
         self._recover_failed = recover_failed_job
         self._recover_history = recover_model_history
@@ -421,7 +424,7 @@ class TrainingPage(QWidget):
     def _select_history_model(self, model: Path) -> None:
         item = self._history_items.get(Path(model).resolve())
         if item is not None:
-            self.job_path = item.job_path
+            self.job_path = None
 
     def _update_retry_button(self) -> None:
         failed = self.failed_job
@@ -462,14 +465,21 @@ class TrainingPage(QWidget):
             self._show_error(str(error))
 
     def _infer(self, values: InferenceInput) -> None:
-        if self.job_path is None or self.inference_page.model is None:
+        if self.inference_page.model is None:
             self.inference_page.set_error(self.translator.text("inference.no_model"))
             return
         try:
+            setting, module, framework = self.form.selection()
+            if setting is None:
+                raise ValueError(self.translator.text("training.module_unavailable"))
+            if self.job_path is None:
+                self.job_path = self._ensure_inference_job(
+                    Path(setting.project_root).resolve(),
+                    module.module_id,
+                    framework.id,
+                    self.inference_page.model,
+                )
             if self.process is None:
-                setting, _, _ = self.form.selection()
-                if setting is None:
-                    raise ValueError(self.translator.text("training.module_unavailable"))
                 self.attach_process(self._process_factory(setting))
             request = self._build_inference_request(
                 self.job_path,

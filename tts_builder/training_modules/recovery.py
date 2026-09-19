@@ -24,7 +24,6 @@ class FailedJob:
 @dataclass(frozen=True)
 class ModelHistoryItem:
     model: Path
-    job_path: Path
     latest_audio: Path | None
 
 
@@ -48,18 +47,18 @@ def local_model_history(
     models_root = (root / "models").resolve()
     if models_root.parent != root or not models_root.is_dir():
         return ()
-    found: list[ModelHistoryItem] = []
-    seen: set[Path] = set()
-    for _, directory, job, journal in _candidate_jobs(root):
-        project_name = _job_project_name(job, directory, root, module_id, framework)
-        if project_name is None:
-            continue
-        model = _completed_model(journal, root, directory.name)
-        if model is None or model in seen or not _complete_local_bundle(model, models_root):
-            continue
-        seen.add(model)
-        found.append(ModelHistoryItem(model, job, _latest_audio(root, project_name)))
-    return tuple(found)
+    try:
+        models = [
+            path.resolve()
+            for path in models_root.iterdir()
+            if path.is_dir() and _complete_local_bundle(path, models_root)
+        ]
+        models.sort(key=lambda path: path.stat().st_mtime_ns, reverse=True)
+    except OSError:
+        return ()
+    return tuple(
+        ModelHistoryItem(model, _latest_audio(root, model.name)) for model in models
+    )
 
 
 def latest_promoted_model(

@@ -135,3 +135,28 @@ def test_request_rejects_invalid_utf8_and_model_escape_without_partial_directory
             datetime(2026, 9, 18),
         )
     assert not (job.parent / "inference").exists()
+
+
+def test_local_model_can_create_a_minimal_inference_job_without_training_history(tmp_path):
+    from tts_builder.training_modules.inference import ensure_inference_job
+
+    project = tmp_path / "project"
+    model = project / "models" / "Acane"
+    model.mkdir(parents=True)
+
+    job = ensure_inference_job(
+        project, "gpt-sovits-v2proplus", "v2ProPlus", model
+    )
+
+    payload = json.loads(job.read_text(encoding="utf-8"))
+    events = [
+        json.loads(line)
+        for line in (job.parent / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert payload["project_name"] == "Acane"
+    assert payload["training_data"]["path"].endswith("context.list")
+    assert Path(payload["training_data"]["path"]).is_file()
+    assert [event["type"] for event in events] == ["artifact", "promotion_completed"]
+    assert events[0]["artifacts"] == [
+        {"type": "promoted_model", "path": str(model.resolve())}
+    ]

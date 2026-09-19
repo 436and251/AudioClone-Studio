@@ -1,12 +1,66 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from uuid import uuid4
 
 
 LANGUAGES = {"zh", "ja", "en", "mixed"}
+
+
+def ensure_inference_job(
+    project_root: Path,
+    module_id: str,
+    framework: str,
+    promoted_model: Path,
+) -> Path:
+    project = _absolute_directory(project_root, "project_root")
+    model = _validated_model(promoted_model, project)
+    job_id = f"inference-{model.name}"
+    job_dir = project / "jobs" / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    context = job_dir / "context.list"
+    context.touch(exist_ok=True)
+    job = job_dir / "job.json"
+    payload = {
+        "protocol_version": 2,
+        "job_id": job_id,
+        "module_id": module_id,
+        "project_name": model.name,
+        "project_root": str(project),
+        "output_root": str((project / "outputs").resolve()),
+        "training_data": {"path": str(context.resolve()), "kind": "file"},
+        "framework": framework,
+        "stages": ["evaluate"],
+        "device": "cuda:0",
+        "precision": "fp16",
+        "parameters": {},
+        "reference": None,
+        "job_dir": str(job_dir.resolve()),
+    }
+    now = datetime.now(timezone.utc).isoformat()
+    events = (
+        {
+            "protocol_version": 1,
+            "job_id": job_id,
+            "type": "artifact",
+            "timestamp": now,
+            "artifacts": [{"type": "promoted_model", "path": str(model)}],
+        },
+        {
+            "protocol_version": 1,
+            "job_id": job_id,
+            "type": "promotion_completed",
+            "timestamp": now,
+        },
+    )
+    _write_json(job, payload)
+    _write_text(
+        job_dir / "events.jsonl",
+        "".join(json.dumps(event, ensure_ascii=False) + "\n" for event in events),
+    )
+    return job.resolve()
 
 
 def build_inference_request(
@@ -133,7 +187,7 @@ def _write_request(
 
 
 def _absolute_directory(value: object, field: str) -> Path:
-    if not isinstance(value, str) or not Path(value).is_absolute():
+    if not isinstance(value, (str, Path)) or not Path(value).is_absolute():
         raise ValueError(f"{field} must be absolute")
     path = Path(value).resolve()
     if not path.is_dir():
@@ -158,3 +212,16 @@ def _available_output(directory: Path, job_dir: Path, now: datetime) -> Path:
         candidate = directory / f"{stem}-{suffix}.wav"
         suffix += 1
     return candidate
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    _write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+
+
+def _write_text(path: Path, content: str) -> None:
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        temporary.write_text(content, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)

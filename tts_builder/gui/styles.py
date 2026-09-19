@@ -70,6 +70,12 @@ QLabel#CandidateStatus, QLabel#OperationStatus {
     padding: 8px 11px;
     color: #B3B3B3;
 }
+QLabel#InferenceBusy {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: #B3B3B3;
+}
 QLabel#CandidateStatus[state="success"] { color: #1ED760; }
 QLabel#CandidateStatus[state="failed"] { color: #FF6B6B; }
 QFrame#CandidateSample {

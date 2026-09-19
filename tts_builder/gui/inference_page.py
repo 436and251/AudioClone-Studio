@@ -78,7 +78,7 @@ class InferencePage(QWidget):
         self.model_hint.setStyleSheet(f"color:{MUTED}")
         hero_text.addWidget(self.model_hint)
         self.busy_hint = QLabel()
-        self.busy_hint.setObjectName("OperationStatus")
+        self.busy_hint.setObjectName("InferenceBusy")
         self.busy_hint.hide()
         hero_text.addWidget(self.busy_hint)
         hero_layout.addLayout(hero_text, 1)
@@ -267,12 +267,10 @@ class InferencePage(QWidget):
     def _update_actions(self, *_):
         inline = bool(self.text.toPlainText().strip())
         source = Path(self.txt_edit.text().strip()) if self.txt_edit.text().strip() else None
-        valid_file = source is not None and source.is_file() and source.suffix.lower() == ".txt"
         self.start_button.setEnabled(
             self.model is not None
             and not self._busy
-            and (inline != valid_file)
-            and (source is None or valid_file)
+            and (inline or source is not None)
         )
         available = self.result is not None and self.result.is_file() and not self._busy
         self.play_button.setEnabled(available)
@@ -285,6 +283,14 @@ class InferencePage(QWidget):
         text = self.text.toPlainText().strip() or None
         source = self.txt_edit.text().strip()
         self.error.hide()
+        if text and source:
+            self.set_error(self.translator.text("inference.source_conflict"))
+            return
+        if source and (
+            not Path(source).is_file() or Path(source).suffix.lower() != ".txt"
+        ):
+            self.set_error(self.translator.text("inference.invalid_text_file"))
+            return
         self.inference_requested.emit(InferenceInput(
             text,
             Path(source).resolve() if source else None,

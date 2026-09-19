@@ -42,6 +42,7 @@ class ModuleProcessController(QObject):
         self._job_dir: Path | None = None
         self._event_store: EventStore | None = None
         self._stdout = None
+        self._stdout_path: Path | None = None
         self._stderr = None
         self._stderr_path: Path | None = None
         self._stderr_offset = 0
@@ -115,6 +116,7 @@ class ModuleProcessController(QObject):
             self._event_store.offset = self._event_store.journal.stat().st_size
         self._stderr_path = _contained_output(self._job_dir, "module.stderr.log")
         stdout_path = _contained_output(self._job_dir, "module.stdout.log")
+        self._stdout_path = stdout_path
         self._stderr_offset = (
             self._stderr_path.stat().st_size if self._stderr_path.exists() else 0
         )
@@ -159,6 +161,8 @@ class ModuleProcessController(QObject):
         if tail:
             self.stderr_received.emit(tail)
         self._close_logs()
+        if returncode == 0:
+            self._age_completed_logs()
         self._process = None
         self.completed.emit(returncode)
 
@@ -185,6 +189,29 @@ class ModuleProcessController(QObject):
                 stream.close()
         self._stdout = None
         self._stderr = None
+
+    def _age_completed_logs(self) -> None:
+        for path in (self._stdout_path, self._stderr_path):
+            if path is not None:
+                path.unlink(missing_ok=True)
+        if self._event_store is None:
+            return
+        journal = self._event_store.journal
+        try:
+            retained = []
+            for line in journal.read_text(encoding="utf-8").splitlines():
+                event = json.loads(line)
+                if isinstance(event, dict) and event.get("type") not in {
+                    "stage_progress", "inference_progress"
+                }:
+                    retained.append(json.dumps(event, ensure_ascii=False))
+            temporary = journal.with_name(".events.jsonl.tmp")
+            temporary.write_text(
+                "".join(line + "\n" for line in retained), encoding="utf-8"
+            )
+            temporary.replace(journal)
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return
 
 
 def _validated_setting(setting: TrainingModuleSetting) -> tuple[Path, Path]:

@@ -12,6 +12,7 @@ class AudioPlayer(QObject):
         self.output = QAudioOutput(self)
         self.player = QMediaPlayer(self)
         self.player.setAudioOutput(self.output)
+        self.player.mediaStatusChanged.connect(self._media_status_changed)
 
     def play(self, path: Path) -> None:
         self.player.stop()
@@ -20,3 +21,8 @@ class AudioPlayer(QObject):
 
     def stop(self) -> None:
         self.player.stop()
+        self.player.setSource(QUrl())
+
+    def _media_status_changed(self, status) -> None:
+        if status in {QMediaPlayer.EndOfMedia, QMediaPlayer.InvalidMedia}:
+            self.stop()

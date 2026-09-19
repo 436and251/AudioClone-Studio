@@ -189,6 +189,50 @@ def test_infer_rejects_missing_request_before_launch(tmp_path: Path):
     assert calls == []
 
 
+def test_completed_operation_removes_stream_logs_and_ages_progress_events(tmp_path: Path):
+    from tts_builder.training_modules.process import ModuleProcessController
+
+    create_application([])
+    setting = _setting(tmp_path)
+    job = _job(tmp_path)
+    process = FakeProcess()
+    controller = ModuleProcessController(
+        setting, popen=lambda *_args, **_kwargs: process
+    )
+    controller.start(job)
+    journal = job.parent / "events.jsonl"
+    events = [
+        {
+            "protocol_version": 1,
+            "job_id": "job-1",
+            "type": "stage_progress",
+            "timestamp": "2026-09-19T00:00:00+00:00",
+            "stage": "s1",
+            "current": 1,
+            "total": 2,
+        },
+        {
+            "protocol_version": 1,
+            "job_id": "job-1",
+            "type": "job_completed",
+            "timestamp": "2026-09-19T00:00:01+00:00",
+        },
+    ]
+    journal.write_text(
+        "".join(json.dumps(event) + "\n" for event in events), encoding="utf-8"
+    )
+    process.returncode = 0
+
+    controller._poll()
+
+    assert not (job.parent / "module.stdout.log").exists()
+    assert not (job.parent / "module.stderr.log").exists()
+    remaining = [
+        json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [event["type"] for event in remaining] == ["job_completed"]
+
+
 def test_cooperative_stop_force_kill_grace_and_detach(tmp_path: Path):
     from tts_builder.training_modules.process import ModuleProcessController
 

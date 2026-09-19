@@ -266,24 +266,8 @@ def test_model_history_lists_only_complete_local_models_and_latest_audio(tmp_pat
     acane = _complete_bundle(project / "models" / "Acane")
     lucy = _complete_bundle(project / "models" / "Lucy")
     (project / "models" / "broken").mkdir(parents=True)
-    acane_job, acane_events = _job(
-        project, "acane", overrides={"project_name": "Acane"}
-    )
-    lucy_job, lucy_events = _job(
-        project, "lucy", overrides={"project_name": "Lucy"}
-    )
-    _, broken_events = _job(
-        project, "broken", overrides={"project_name": "broken"}
-    )
-    acane_events.write_text(_promotion("acane", acane), encoding="utf-8")
-    lucy_events.write_text(_promotion("lucy", lucy), encoding="utf-8")
-    broken_events.write_text(
-        _promotion("broken", project / "models" / "broken"), encoding="utf-8"
-    )
-    os.utime(lucy_events, (1, 1))
-    os.utime(lucy_job, (1, 1))
-    os.utime(acane_events, (2, 2))
-    os.utime(acane_job, (2, 2))
+    os.utime(acane, (1, 1))
+    os.utime(lucy, (2, 2))
     old = project / "outputs" / "Acane" / "gui" / "old.wav"
     new = project / "outputs" / "Acane" / "gui" / "new.wav"
     old.parent.mkdir(parents=True)
@@ -294,8 +278,8 @@ def test_model_history_lists_only_complete_local_models_and_latest_audio(tmp_pat
 
     history = local_model_history(project, MODULE, FRAMEWORK)
 
-    assert [item.model.name for item in history] == ["Acane", "Lucy"]
-    assert history[0].model == acane.resolve()
-    assert history[0].job_path == acane_job.resolve()
-    assert history[0].latest_audio == new.resolve()
-    assert history[1].latest_audio is None
+    assert [item.model.name for item in history] == ["Lucy", "Acane"]
+    assert history[0].model == lucy.resolve()
+    assert history[0].latest_audio is None
+    assert history[1].model == acane.resolve()
+    assert history[1].latest_audio == new.resolve()
