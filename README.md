@@ -1,6 +1,6 @@
 # AudioMiner / AudioClone Studio
 
-AudioMiner 是本地语音素材挖掘工具：输入本地音视频、YouTube 或 Bilibili 链接，自动完成人声分离、音频标准化、语音识别、切片和训练清单导出。
+AudioMiner / AudioClone Studio 是本地语音素材挖掘工具：输入本地音视频、YouTube 或 Bilibili 链接，自动完成人声分离、音频标准化、语音识别、切片和训练清单导出。
 
 它有两种互不影响的使用方式：
 
@@ -31,8 +31,8 @@ AudioMiner 是本地语音素材挖掘工具：输入本地音视频、YouTube �
 ### 1. 获取源码
 
 ```powershell
-git clone https://github.com/436and251/tts_dataset_builder_gui_v0_1.git AudioMiner
-Set-Location .\AudioMiner
+git clone https://github.com/436and251/AudioClone-Studio.git AudioCloneStudio
+Set-Location .\AudioCloneStudio
 ```
 
 ### 2. 安装 uv 和 FFmpeg
@@ -135,7 +135,7 @@ Set-Location ..
 git clone https://github.com/436and251/voice-pipeline.git voice-pipeline
 ```
 
-voice-pipeline 强依赖 PyTorch/CUDA，应使用**独立训练环境**，不要把 AudioMiner 的 GUI 依赖和训练依赖混装。
+voice-pipeline 强依赖 PyTorch/CUDA，应使用**独立训练环境**。
 
 ```powershell
 Set-Location .\voice-pipeline\voice-pipeline
@@ -194,7 +194,7 @@ Python：训练环境中的 python.exe
 模块入口：voice_pipeline
 ```
 
-点击“检查连接”。握手成功并保存后重启 GUI，窗口会显示为 **AudioClone Studio**，左侧出现“素材挖掘”和“训练”。AudioMiner 通过指定的 Python 启动训练子进程，不需要提前常驻运行服务。
+点击“检查连接”。握手成功并保存后重启 GUI，窗口会显示为 **AudioClone Studio**，左侧出现“素材挖掘”和“训练”。AudioClone Studio 通过指定的 Python 启动训练子进程，不需要提前常驻运行服务。
 
 ## 四、完整工作流
 
@@ -235,7 +235,9 @@ jobs 自动清理规则：
 ## 六、常见问题
 
 ### `ModuleNotFoundError: PySide6`
-有可能是混用了虚拟环境，请确认启动 AudioMiner 时使用的是 AudioMiner 环境，并安装了 GUI 依赖：
+有可能是混用了虚拟环境，请确认启动 AudioClone-Studio 时使用的是本身的虚拟环境而不是voice-pipeline的环境或者别的虚拟环境。
+
+检查是否安装了 GUI 依赖，若没有，进入正确的虚拟环境执行安装：
 
 ```powershell
 .\venv\Scripts\Activate.ps1
