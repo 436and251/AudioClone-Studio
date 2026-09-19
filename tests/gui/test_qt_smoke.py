@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QDialog
 from tts_builder.gui.app import create_application
 from tts_builder.gui.main_window import MainWindow
 from tts_builder.gui.settings import AppSettings
+from tts_builder.events import PipelineEvent
 
 
 def test_settings_combos_ignore_mouse_wheel(tmp_path):
@@ -134,6 +135,39 @@ def test_stop_action_and_controller_signals_keep_driving_the_page(tmp_path):
     controller.task_cancelled.emit()
     app.processEvents()
     assert window.status.text() == 'Stopped · completed cache was preserved'
+    window.close()
+
+
+def test_dataset_long_messages_stay_in_activity_not_fixed_layout(tmp_path, monkeypatch):
+    app = create_application([])
+    controller = RecordingController()
+    window = MainWindow(
+        AppSettings(model_root=tmp_path / "models", output_root=tmp_path / "out"),
+        controller,
+    )
+    dialogue = "Very long ASR dialogue " * 30
+    failure = "Very long decoder failure " * 30
+
+    controller.event_received.emit(
+        PipelineEvent("stage_progress", "asr", dialogue, 1, 10)
+    )
+    app.processEvents()
+
+    assert window.progress.rows["asr"][1].text() == "10%"
+    assert dialogue not in window.status.text()
+    assert dialogue in window.logs.view.toPlainText()
+
+    controller.event_received.emit(PipelineEvent("stage_failed", "asr", failure))
+    app.processEvents()
+    assert window.progress.rows["asr"][1].text() == "Failed"
+    assert failure not in window.status.text()
+    assert failure in window.logs.view.toPlainText()
+
+    monkeypatch.setattr("PySide6.QtWidgets.QMessageBox.exec", lambda *_: 0)
+    controller.task_failed.emit("ASR failed", failure, "decoder traceback")
+    app.processEvents()
+    assert window.status.text() == "Failed · see Activity for details"
+    assert "decoder traceback" in window.logs.view.toPlainText()
     window.close()
 
 

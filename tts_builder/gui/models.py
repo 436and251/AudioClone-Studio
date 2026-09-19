@@ -11,7 +11,6 @@ STAGES = ("prepare", "source", "separate", "normalize", "asr", "segment", "expor
 class StageState:
     status: str = "pending"
     percent: int = 0
-    message: str = ""
 
 
 @dataclass
@@ -26,23 +25,18 @@ class ProgressModel:
         state = self.stages[event.stage]
         if event.kind == "stage_started":
             state.status = "running"
-            state.message = event.message
         elif event.kind == "stage_cache_hit":
             state.status = "cached"
             state.percent = 100
-            state.message = event.message or "Cached"
         elif event.kind == "stage_completed":
             state.status = "completed"
             state.percent = 100
-            state.message = event.message
         elif event.kind == "stage_progress":
             state.status = "running"
-            state.message = event.message
             if event.total and event.total > 0 and event.current is not None:
                 state.percent = max(0, min(99, int(event.current / event.total * 100)))
         elif event.kind in {"stage_failed", "pipeline_failed"}:
             state.status = "failed"
-            state.message = event.message
 
     @property
     def overall_percent(self) -> int:

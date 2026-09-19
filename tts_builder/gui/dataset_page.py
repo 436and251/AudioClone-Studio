@@ -232,9 +232,6 @@ class DatasetPage(QWidget):
         self.progress_model.consume(event)
         self.progress.apply(self.progress_model)
         self.logs.append_event(event)
-        if event.stage and event.message:
-            self._status_key = None
-            self.status.setText(event.message)
 
     def _running(self, running: bool) -> None:
         self.source.setEnabled(not running)
@@ -256,8 +253,8 @@ class DatasetPage(QWidget):
 
     def _failed(self, title: str, message: str, detail: str) -> None:
         self.status.setStyleSheet(f"color:{FAILED}")
-        self._status_key = None
-        self.status.setText(message)
+        self._set_status("status.failed")
+        self.logs.append_text(message)
         self.logs.append_text(detail)
         self._set_start_mode("retry")
         box = QMessageBox(QMessageBox.Critical, title, message, QMessageBox.Ok, self)

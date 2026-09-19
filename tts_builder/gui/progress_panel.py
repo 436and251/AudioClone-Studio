@@ -51,15 +51,19 @@ class ProgressPanel(QWidget):
                 icon.setText("✓")
                 icon.setStyleSheet(f"color:{GREEN};font-weight:700")
                 key = "progress.cached" if state.status == "cached" else "progress.done"
-                label.setText(state.message or self.translator.text(key))
+                label.setText(self.translator.text(key))
             elif state.status == "running":
                 icon.setText("●")
                 icon.setStyleSheet(f"color:{GREEN}")
-                label.setText(state.message or (f"{state.percent}%" if state.percent else self.translator.text("progress.working")))
+                label.setText(
+                    f"{state.percent}%"
+                    if state.percent
+                    else self.translator.text("progress.working")
+                )
             elif state.status == "failed":
                 icon.setText("!")
                 icon.setStyleSheet(f"color:{FAILED};font-weight:700")
-                label.setText(state.message or self.translator.text("progress.failed"))
+                label.setText(self.translator.text("progress.failed"))
             else:
                 icon.setText("○")
                 icon.setStyleSheet(f"color:{PENDING}")
