@@ -20,9 +20,11 @@ AudioMiner 是本地语音素材挖掘工具：输入本地音视频、YouTube �
   → faster-whisper 多语言 ASR
   → 切片与质量过滤
   → clips + transcript + manifest.jsonl + dataset.list
+  
+配置训练模块后，将拓展模型训练，模型评测，推理适用能力
 ```
 
-支持 Windows 10/11、Python 3.12、FFmpeg。NVIDIA GPU 推荐但不是必需；CPU 可以运行，但人声分离、ASR 和后续训练会明显更慢。
+支持 Windows 10/11、Python 3.12、FFmpeg。NVIDIA GPU 推荐但不是必需；CPU 可以运行，但人声分离、ASR 和后续训练会明显慢很多。
 
 ## 一、安装 AudioMiner
 
@@ -74,7 +76,9 @@ python .\voice_dataset_builder.py
 
 ## 二、只使用素材挖掘
 
-GUI 中依次填写素材、输出目录、说话人、语言和 ASR 模型，然后开始处理。GUI 当前始终执行 Demucs；已经是干净人声、需要跳过分离时，请使用下方 CLI 的 `--skip-separation`。
+GUI 示例：
+依次填写素材、输出目录、说话人、语言和 ASR 模型，然后开始处理。GUI 当前始终执行 Demucs；已经是干净人声、需要跳过分离时，请使用下方 CLI 的 `--skip-separation`。
+![GUI](assets\gui_example1.png)
 
 CLI 示例：
 
@@ -111,22 +115,27 @@ D:\datasets\Acane\
 
 ```text
 绝对音频路径|目标人|语言|文本
+e.g. D:\AI-Training\voice-clone\train_data\lucy\clips\cv_e153d4bd_0001.wav|Lucy|ja|ふーん、あら、面白そうなものがある
 ```
 
-任务成功后会自动删除体积较大的分离音频和整段标准化 WAV，保留来源/ASR 状态以便复用。失败或主动停止时保留已经完成的阶段；再次处理同一来源会尽量续接。`--fresh` 强制重算，`--keep-temp` 仅用于调试并会明显增加磁盘占用。
+任务成功后会自动删除体积较大的分离音频和整段标准化 WAV，保留来源/ASR 状态以便复用。失败或主动停止时保留已经完成的阶段；再次处理同一来源会尽量续接。
 
-## 三、接入 voice-pipeline
+用户可以使用`--fresh` 强制重开，`--keep-temp` 仅用于调试并会明显增加磁盘占用。
+
+## 三、接入训练框架
+
+接入训练框架指导以我自己改造的gpt_sovits架构的训练框架作为范例，BS-Reformer或其他架构暂时无法支持。
 
 ### 1. 获取独立训练仓库
 
-建议将两个仓库放在相邻目录，但不是强制要求：
+克隆voice-pipeline仓库，建议将两个仓库放在相邻目录，但不是强制要求：
 
 ```powershell
 Set-Location ..
 git clone https://github.com/436and251/voice-pipeline.git voice-pipeline
 ```
 
-voice-pipeline 强依赖 PyTorch/CUDA，应使用独立训练环境，不要把 AudioMiner 的 GUI 依赖和训练依赖混装。
+voice-pipeline 强依赖 PyTorch/CUDA，应使用**独立训练环境**，不要把 AudioMiner 的 GUI 依赖和训练依赖混装。
 
 ```powershell
 Set-Location .\voice-pipeline\voice-pipeline
@@ -143,7 +152,9 @@ uv pip install --python 'D:\path\to\.venv-gpt-sovits\Scripts\python.exe' -e . --
 
 ### 2. 准备 GPT-SoVITS v2ProPlus 权重
 
-训练模块根目录下应存在：
+用户可以从这里 [获取所有需要的模型](https://www.yuque.com/baicaigongchang1145haoyuangong/ib3g1e/dkxgpiy9zb96hob4#nVNhX)
+
+然后按照如下目录层级配置（训练模块根目录下应存在）：
 
 ```text
 models/pretrained/v2proplus/
@@ -170,6 +181,10 @@ $pipelinePython = 'D:\path\to\.venv-gpt-sovits\Scripts\python.exe'
 
 ### 3. 在 AudioMiner 中连接
 
+页面示例：
+
+![连接voice-pipeline训练框架](assets\gui_example3.png)
+
 重新启动 AudioMiner，打开“设置 → 训练模块 → 添加”，填写：
 
 ```text
@@ -183,14 +198,15 @@ Python：训练环境中的 python.exe
 
 ## 四、完整工作流
 
-1. 在“素材挖掘”生成 `dataset.list`，完成后点击“继续训练”；也可以直接选择已有训练数据。
-2. 填写目标人名称，选择 GPT-SoVITS v2ProPlus、设备和精度。训练输出固定在训练模块根目录，不会写回外部数据集目录。
-3. 勾选预处理、S2、S1 和自动评测并开始。训练配置在运行中仍可编辑，但只对下一次任务生效。
-4. 失败后使用“继续失败阶段”；最近 48 小时内每个目标人最新的一次失败任务可恢复。
-5. 自动评测完成后，在“候选试听”比较 A/B/C 的中文、日文和英文试听。
-6. 人工选择并晋升一个候选。未晋升前不会自动删除候选或训练恢复数据。
-7. 晋升后在“推理试验”选择模型，输入文字或 UTF-8 TXT（二选一）并生成 WAV。
-8. 模型历史直接读取训练模块的 `models/`，删除 job 后重启应用仍可选择完整模型。
+1. 输入视频链接或者本地文件目录，完成数据构造。GPT-SoVITS使用其中的`dataset.list`格式数据。
+2. 点击“继续训练”，跳转至训练页面；此时会自动绑定上一步获取的数据，当然也可以重新直接选择已有训练数据。
+3. 填写目标人名称，选择 GPT-SoVITS v2ProPlus、设备和精度。训练输出固定在训练模块根目录，不会写回外部数据集目录。
+4. 勾选预处理、S2、S1 和自动评测并开始。训练配置在运行中仍可编辑，但只对下一次任务生效。
+![训练参数配置](assets\gui_example4.png)
+5. 自动评测完成后，在“候选试听”比较 A/B/C 的中文、日文和英文试听；人工选择并晋升一个候选。
+![人工试听候选](assets\gui_example5.png)
+6. 晋升后在“推理试验”选择模型，输入文字或待推理.txt文件 （二选一）并生成 WAV。
+![推理试听](assets\gui_example6.png)
 
 训练、晋升和推理互斥，避免同时争用 GPU 和任务日志。
 
@@ -219,8 +235,7 @@ jobs 自动清理规则：
 ## 六、常见问题
 
 ### `ModuleNotFoundError: PySide6`
-
-确认启动 AudioMiner 时使用的是 AudioMiner 环境，并安装了 GUI 依赖：
+有可能是混用了虚拟环境，请确认启动 AudioMiner 时使用的是 AudioMiner 环境，并安装了 GUI 依赖：
 
 ```powershell
 .\venv\Scripts\Activate.ps1
@@ -260,7 +275,7 @@ python -m voice_pipeline --help
 
 ## 开发验证
 
-仓库不再提供 PyInstaller/EXE 打包流程。源码测试建议使用已安装 pytest 与 PySide6 的开发环境：
+源码测试建议使用已安装 pytest 与 PySide6 的开发环境：
 
 ```powershell
 python -m pytest -q
