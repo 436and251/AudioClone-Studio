@@ -78,7 +78,7 @@ python .\voice_dataset_builder.py
 
 GUI 示例：
 依次填写素材、输出目录、说话人、语言和 ASR 模型，然后开始处理。GUI 当前始终执行 Demucs；已经是干净人声、需要跳过分离时，请使用下方 CLI 的 `--skip-separation`。
-![GUI](assets\gui_example1.png)
+![GUI](assets/gui_example1.png)
 
 CLI 示例：
 
@@ -183,7 +183,7 @@ $pipelinePython = 'D:\path\to\.venv-gpt-sovits\Scripts\python.exe'
 
 页面示例：
 
-![连接voice-pipeline训练框架](assets\gui_example3.png)
+![连接voice-pipeline训练框架](assets/gui_example3.png)
 
 重新启动 AudioMiner，打开“设置 → 训练模块 → 添加”，填写：
 
@@ -202,11 +202,11 @@ Python：训练环境中的 python.exe
 2. 点击“继续训练”，跳转至训练页面；此时会自动绑定上一步获取的数据，当然也可以重新直接选择已有训练数据。
 3. 填写目标人名称，选择 GPT-SoVITS v2ProPlus、设备和精度。训练输出固定在训练模块根目录，不会写回外部数据集目录。
 4. 勾选预处理、S2、S1 和自动评测并开始。训练配置在运行中仍可编辑，但只对下一次任务生效。
-![训练参数配置](assets\gui_example4.png)
+![训练参数配置](assets/gui_example4.png)
 5. 自动评测完成后，在“候选试听”比较 A/B/C 的中文、日文和英文试听；人工选择并晋升一个候选。
-![人工试听候选](assets\gui_example5.png)
+![人工试听候选](assets/gui_example5.png)
 6. 晋升后在“推理试验”选择模型，输入文字或待推理.txt文件 （二选一）并生成 WAV。
-![推理试听](assets\gui_example6.png)
+![推理试听](assets/gui_example6.png)
 
 训练、晋升和推理互斥，避免同时争用 GPU 和任务日志。
 
