@@ -1,465 +1,267 @@
-# Voice Dataset Builder
+# AudioMiner / AudioClone Studio
 
-一个面向 GPT-SoVITS 等 TTS 训练流程的本地语音数据集构建工具。
+AudioMiner 是本地语音素材挖掘工具：输入本地音视频、YouTube 或 Bilibili 链接，自动完成人声分离、音频标准化、语音识别、切片和训练清单导出。
 
-它可以把 **本地音频 / 视频文件、YouTube 链接、Bilibili 链接** 自动处理为干净的人声训练片段，并生成 GPT-SoVITS 可直接使用的数据清单。
+它有两种互不影响的使用方式：
 
-项目同时提供：
+- **AudioMiner 独立模式**：只安装本仓库，生成 `clips/`、`manifest.jsonl` 和 GPT-SoVITS `dataset.list`。
+- **AudioClone Studio 完整模式**：额外连接独立的 `voice-pipeline`，在同一 GUI 中完成素材挖掘、预处理、S1/S2 训练、自动评测、A/B/C 试听、人工晋升和推理试验。
 
-- **桌面 GUI**：适合日常使用，支持输入路径 / URL、模型管理、阶段进度、错误提示与任务续接；
-- **CLI**：适合调试、批量处理和自动化脚本。
+未配置训练模块时，原有素材挖掘 GUI、CLI 和缓存逻辑不会依赖或启动 voice-pipeline。
 
-你只需要 **输入链接** 和 **确认地址**:
-![image](assets/gui_example1.png)
+> 当前假设一个素材中主要只有一个目标说话人。工具可以去除背景音乐，但不负责多说话人分轨识别。请确保对素材及目标声音拥有合法使用权，禁止用于欺诈或冒充。
 
-> 当前默认假设：单个素材中**主要**只有一个目标说话人，可自动去除 BGM，但暂不具备多说话人分轨识别提取。
-
-
----
-
-## 写在前面
-
-本项目旨在大幅消减训练时寻找、整理、构建数据的时间成本和人力成本；鼓励使用者传播或者按需对其进行特化改造，但是！**请勿进行商用、诈骗等用途**。
-
-本项目只是提供了一个快速批量构建voice clone等text-to-speech(tts) 任务训练数据的小工具；无法对任何使用者的任何行为有约束力，因此不对任何负面甚至非法行为和相应后果负任何责任。
-
----
-
-## 主要功能以及技术概要
-
-- YouTube / Bilibili 音频获取
-- Demucs 人声分离
-- FFmpeg 音频标准化
-- faster-whisper 多语言 ASR
-- 自动生成适合 TTS 的短语音片段
-- ASR 置信度与时长过滤
-- GPT-SoVITS `dataset.list` 和通用数据格式导出
-
-典型处理流程：
+## 功能与边界
 
 ```text
-Audio / Video / URL
-        ↓
-Source acquisition
-        ↓
-Vocal separation
-        ↓
-Audio normalization
-        ↓
-ASR transcription
-        ↓
-Segmentation & filtering
-        ↓
-clips / transcript / manifest / dataset.list
+本地音视频 / YouTube / Bilibili
+  → Demucs 人声分离
+  → FFmpeg 标准化
+  → faster-whisper 多语言 ASR
+  → 切片与质量过滤
+  → clips + transcript + manifest.jsonl + dataset.list
 ```
 
----
+支持 Windows 10/11、Python 3.12、FFmpeg。NVIDIA GPU 推荐但不是必需；CPU 可以运行，但人声分离、ASR 和后续训练会明显更慢。
 
-## 项目结构
+## 一、安装 AudioMiner
 
-```text
-.
-├── voice_dataset_builder.py     # GUI 入口
-├── build_dataset.py             # CLI 入口
-├── requirements.txt
-├── requirements-gui.txt
-├── assets/
-├── tts_builder/
-│   ├── pipeline.py
-│   ├── separator.py
-│   ├── transcriber.py
-│   ├── segmenter.py
-│   ├── dataset.py
-│   ├── cache.py
-│   ├── sources/
-│   └── gui/
-└── tests/
+### 1. 获取源码
+
+```powershell
+git clone https://github.com/436and251/tts_dataset_builder_gui_v0_1.git AudioMiner
+Set-Location .\AudioMiner
 ```
 
----
-
-# 快速开始
-
-## 1. 环境要求
-
-推荐环境：
-
-```text
-Windows 10 / 11
-Python 3.12
-NVIDIA GPU + CUDA（推荐，但不是必须）
-FFmpeg
-```
-
-CPU 模式也可以运行，但 Demucs 和 ASR 会明显更慢。
-
----
-
-## 2. 安装 Python 环境
-
-推荐使用 `uv`。
-
-安装 uv：
+### 2. 安装 uv 和 FFmpeg
 
 ```powershell
 winget install --id=astral-sh.uv -e
+winget install --id=Gyan.FFmpeg -e
 ```
 
-进入项目目录后创建环境：
+重新打开 PowerShell 后确认：
 
 ```powershell
-uv venv --python 3.12
-```
-
-激活环境：
-
-```powershell
-.\venv\Scripts\activate.ps1
-```
-
-安装核心依赖：
-
-```powershell
-uv pip install -r requirements.txt
-```
-
-安装 GUI 依赖：
-
-```powershell
-uv pip install -r requirements-gui.txt
-```
-
-如果你已经有兼容的 GPT-SoVITS / PyTorch 环境，也可以直接复用现有虚拟环境。
-
----
-
-## 3. 安装 FFmpeg
-
-Windows 推荐：
-
-```powershell
-winget install --id Gyan.FFmpeg -e
-```
-
-安装后重新打开终端并确认：
-
-```powershell
+uv --version
 ffmpeg -version
 ffprobe -version
 ```
 
-只要这两个命令能正常输出版本信息，开发态就不需要手动复制 `ffmpeg.exe`。
-
----
-
-# 使用桌面 GUI
-
-启动：
+### 3. 创建独立环境
 
 ```powershell
-python voice_dataset_builder.py
+uv venv --python 3.12 venv
+.\venv\Scripts\Activate.ps1
+uv pip install -r requirements.txt
+uv pip install -r requirements-gui.txt
 ```
 
-首次启动只进行本机环境检查，不会立即联网下载模型。
+如果 PowerShell 禁止执行激活脚本，可在当前窗口临时允许：
 
-GUI 中可以设置：
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\venv\Scripts\Activate.ps1
+```
 
-- 输入文件 / URL
-- Speaker 名称
-- Language
-- ASR Model
-- 当前任务输出目录
-- 默认输出目录
-- 模型存储根目录
+### 4. 启动 GUI
 
-开始任务后，界面会展示：
+```powershell
+python .\voice_dataset_builder.py
+```
+
+不要执行 `.venv/Scripts/` 或 `venv/Scripts/`：目录不是命令。当前仓库默认环境目录名是 `venv`，激活命令必须使用 Windows 反斜杠路径。
+
+## 二、只使用素材挖掘
+
+GUI 中依次填写素材、本次输出目录、项目名/说话人和语言，然后开始处理。已经是干净人声时可勾选跳过 Demucs。
+
+CLI 示例：
+
+```powershell
+# 本地音频
+python .\build_dataset.py 'D:\media\voice.wav' --speaker Acane --language ja --output 'D:\datasets\Acane'
+
+# YouTube / Bilibili
+python .\build_dataset.py 'https://www.youtube.com/watch?v=...' --speaker Acane --language ja --output 'D:\datasets\Acane'
+python .\build_dataset.py 'https://www.bilibili.com/video/BV...' --speaker Acane --language ja --output 'D:\datasets\Acane'
+
+# 已经是纯人声
+python .\build_dataset.py 'D:\media\vocals.wav' --speaker Acane --language ja --skip-separation --output 'D:\datasets\Acane'
+```
+
+查看全部参数：
+
+```powershell
+python .\build_dataset.py -h
+```
+
+典型输出：
 
 ```text
-Prepare
-Source
-Vocal Separation
-Normalize
-ASR
-Segment
-Export
+D:\datasets\Acane\
+├── clips\                 # 最终训练片段
+├── transcripts\           # 每个来源的识别与切片详情
+├── manifest.jsonl          # 通用数据清单
+├── dataset.list            # GPT-SoVITS 四字段清单
+└── .cache\                 # 中断恢复缓存
 ```
 
-各阶段会显示运行中、已完成、缓存命中或失败状态。
+`dataset.list` 格式为：
 
----
+```text
+绝对音频路径|目标人|语言|文本
+```
 
-# 可选：接入训练模块（AudioClone Studio）
+任务成功后会自动删除体积较大的分离音频和整段标准化 WAV，保留来源/ASR 状态以便复用。失败或主动停止时保留已经完成的阶段；再次处理同一来源会尽量续接。`--fresh` 强制重算，`--keep-temp` 仅用于调试并会明显增加磁盘占用。
 
-训练模块是可选的。未配置训练模块时，程序保持原来的 `Voice Dataset Builder` 单页模式，素材挖掘、CLI 和缓存逻辑不依赖训练仓，也不会启动训练环境。
+## 三、接入 voice-pipeline
 
-配置至少一个通过协议检查的训练模块后，重启 GUI 会进入 `AudioClone Studio`，侧栏显示“素材挖掘”和“训练”。训练框架在训练页内部选择。
+### 1. 获取独立训练仓库
 
-## 推荐的环境边界
-
-AudioMiner 与训练模块使用各自的虚拟环境，避免 Torch、CUDA 和前端依赖互相污染。AudioMiner 只会用配置中的绝对 Python 路径启动训练子进程；`PYTHONPATH` 和 `PYTHONHOME` 不会传入，而模型设置中的共享 `HF_HOME` 与 `TORCH_HOME` 会显式传入，素材挖掘和训练因此复用同一份模型缓存。
-
-## 首次接入 voice-pipeline
-
-`voice-pipeline` 不是需要提前常驻启动的服务。AudioClone Studio 会在开始训练时，使用你指定的训练环境启动独立子进程；关闭 GUI 前不需要另开一个终端运行 pipeline。
-
-先在 PowerShell 中确认训练模块及预训练权重可用：
+建议将两个仓库放在相邻目录，但不是强制要求：
 
 ```powershell
-Set-Location 'D:\AI-Training\voice-clone\voice-pipeline\voice-pipeline'
-$pipelinePython = 'D:\Python_program_codes\TTS-Inference\.venv-gpt-sovits\Scripts\python.exe'
+Set-Location ..
+git clone https://github.com/436and251/voice-pipeline.git voice-pipeline
+```
+
+voice-pipeline 强依赖 PyTorch/CUDA，应使用独立训练环境，不要把 AudioMiner 的 GUI 依赖和训练依赖混装。
+
+```powershell
+Set-Location .\voice-pipeline\voice-pipeline
+uv venv --python 3.12 .venv-gpt-sovits
+.\.venv-gpt-sovits\Scripts\Activate.ps1
+uv pip install -e .
+```
+
+如果已经有包含兼容 Torch/CUDA 依赖的 Python 3.12 uv 环境，可直接注册源码而不重复解析重量级依赖：
+
+```powershell
+uv pip install --python 'D:\path\to\.venv-gpt-sovits\Scripts\python.exe' -e . --no-deps
+```
+
+### 2. 准备 GPT-SoVITS v2ProPlus 权重
+
+训练模块根目录下应存在：
+
+```text
+models/pretrained/v2proplus/
+├── bert/chinese-roberta-wwm-ext-large/
+├── g2p/en/nltk_data/
+├── g2pw/G2PWModel/
+├── hubert/chinese-hubert-base/
+├── langdetect/lid.176.bin
+├── s1/s1v3.ckpt
+├── s2/s2Gv2ProPlus.pth
+├── s2/s2Dv2ProPlus.pth
+└── speaker/pretrained_eres2netv2w24s4ep4.ckpt
+```
+
+验证训练模块和模型：
+
+```powershell
+$pipelinePython = 'D:\path\to\.venv-gpt-sovits\Scripts\python.exe'
 & $pipelinePython -m voice_pipeline module describe --json
 & $pipelinePython -m voice_pipeline models verify --project-root . --profile v2ProPlus
 ```
 
-第一条命令应输出包含 `"protocol_version":2`、`"gpt-sovits-v2proplus"` 和 `"infer"` 能力的 JSON；第二条命令应确认 v2ProPlus 权重完整。如果第一条提示找不到 `voice_pipeline`，在同一目录执行一次：
+第一条应返回 `protocol_version: 2`，第二条必须全部通过后再训练。
 
-```powershell
-uv pip install --python $pipelinePython -e . --no-deps
-```
+### 3. 在 AudioMiner 中连接
 
-然后启动 AudioMiner：
-
-```powershell
-Set-Location 'D:\Python_program_codes\AudioMiner(voice-clone)'
-.\venv\Scripts\Activate.ps1
-python .\voice_dataset_builder.py
-```
-
-在 AudioMiner 的“设置 → 训练模块”中点击“添加”，按当前目录结构填写：
+重新启动 AudioMiner，打开“设置 → 训练模块 → 添加”，填写：
 
 ```text
 名称：GPT-SoVITS
-训练模块代码目录：D:\AI-Training\voice-clone\voice-pipeline\voice-pipeline
-Python：D:\Python_program_codes\TTS-Inference\.venv-gpt-sovits\Scripts\python.exe
+训练模块代码目录：voice-pipeline 仓库内第二层 voice-pipeline 目录
+Python：训练环境中的 python.exe
 模块入口：voice_pipeline
 ```
 
-点击“检查连接”。出现 `GPT-SoVITS v2ProPlus` 后保存设置、关闭并重新启动 GUI。窗口名称会变为 `AudioClone Studio`，左侧出现“素材挖掘”和“训练”。启动时只有显式配置且握手成功的模块会进入训练页面；删除全部训练模块配置并重启后，会恢复 standalone 单页模式。
+点击“检查连接”。握手成功并保存后重启 GUI，窗口会显示为 **AudioClone Studio**，左侧出现“素材挖掘”和“训练”。AudioMiner 通过指定的 Python 启动训练子进程，不需要提前常驻运行服务。
 
-## 完整工作流
+## 四、完整工作流
 
-训练区始终保留“训练配置”“候选试听”“推理试验”三个页面。训练期间仍可修改配置，但修改只对下一次训练生效；训练、模型晋升和推理三种操作互斥，避免同时占用同一套 GPU 与任务日志。
+1. 在“素材挖掘”生成 `dataset.list`，完成后点击“继续训练”；也可以直接选择已有训练数据。
+2. 填写目标人名称，选择 GPT-SoVITS v2ProPlus、设备和精度。训练输出固定在训练模块根目录，不会写回外部数据集目录。
+3. 勾选预处理、S2、S1 和自动评测并开始。训练配置在运行中仍可编辑，但只对下一次任务生效。
+4. 失败后使用“继续失败阶段”；最近 48 小时内每个目标人最新的一次失败任务可恢复。
+5. 自动评测完成后，在“候选试听”比较 A/B/C 的中文、日文和英文试听。
+6. 人工选择并晋升一个候选。未晋升前不会自动删除候选或训练恢复数据。
+7. 晋升后在“推理试验”选择模型，输入文字或 UTF-8 TXT（二选一）并生成 WAV。
+8. 模型历史直接读取训练模块的 `models/`，删除 job 后重启应用仍可选择完整模型。
 
-1. 在“素材挖掘”中生成 `dataset.list`，完成后点击“继续训练”；也可以在训练页直接选择已有训练数据。界面统一显示“训练数据”，具体是文件还是目录、允许哪些扩展名，由当前训练框架声明；GPT-SoVITS v2ProPlus 当前使用 `.list` 文件。
-2. 训练数据是只读输入，可以位于 AudioMiner 输出目录或任意其他外部绝对路径；GUI 不复制、移动或向素材目录写入缓存。`dataset.list` 中的相对音频路径按该文件所在目录解析。
-3. “项目名称”使用字母、数字、下划线或连字符，例如 `Acane`；选择 `cuda:0`、`fp16`，并勾选预处理、S2、S1、自动评测。训练输出目录由应用自动设为 `<训练模块代码目录>/runs`，无需再次配置项目目录。
-4. 如果启用自动评测，GPT-SoVITS 模块会按 `dataset.list` 顺序自动选择第一条有效的中、日或英语音频作为评测参考，无需另填参考音频。确认高级参数后点击“开始”。
-5. 预处理、S1、S2、评测等阶段状态会显示在训练页；S1/S2 显示模块上报的实际进度。错误、协议异常和子进程输出会立即进入错误区和 Activity 日志。
-6. 自动评测完成后，候选页只展示 `A`、`B`、`C`。每个候选提供中文、日文、英文试听；必须人工确认后才能晋升最终模型。
-7. 未晋升候选前，“推理试验”允许提前填写文本或 TXT 路径，但不会启用生成按钮。人工晋升成功后才会解锁；应用重启或切换回来时，会从训练模块目录最近 30 个任务中恢复严格匹配当前模块、框架和目标人的最新有效晋升模型。
-8. 推理文字可以直接输入，也可以选择一个 UTF-8 `.txt` 文件，两者必须二选一。语言需要明确选择中文、日文、英文或混合语言；推理时可选择 `cuda:0` 或 CPU。
-9. 推理完成后可直接试听或打开保存目录，界面会短暂提示实际路径。默认输出为 `<训练模块代码目录>/outputs/<项目名称>/gui/YYYYMMDD-HHMMSS.wav`；同一秒发生重名时自动追加 `-2`、`-3`，不会覆盖已有结果。
+训练、晋升和推理互斥，避免同时争用 GPU 和任务日志。
 
-每次 GUI 任务的协议快照、事件和日志保存在 `<训练模块代码目录>/jobs/<job_id>/` 下，正式训练目录为 `<训练模块代码目录>/runs/<项目名称>`。任务文件、缓存、checkpoint、评测和推理输出均限制在训练模块目录内；训练数据只作为外部只读输入。当前 GUI 不会自动删除失败任务、试听候选或训练输出。
+## 五、目录与自动清理
 
-## 语言切换
+| 位置 | 内容 | 生命周期 |
+|---|---|---|
+| AudioMiner 设置中的默认输出目录 | clips、清单、转录、素材缓存 | 用户数据；成功后仅压缩大型中间文件 |
+| AudioMiner 设置中的模型目录 | Hugging Face/Whisper、Torch/Demucs 缓存 | 共享模型资源，不自动删除 |
+| `voice-pipeline/models/pretrained/` | 公共预训练权重 | 必需资源，不自动删除 |
+| `voice-pipeline/models/<目标人>/` | 已人工晋升的正式模型 | 永久保留，供历史与推理使用 |
+| `voice-pipeline/runs/<目标人>/` | 训练、评测、A/B/C 候选 | 晋升前保留；晋升后清理原始 checkpoint，但保留评测候选和试听 |
+| `voice-pipeline/outputs/<目标人>/` | 最终推理 WAV | 用户输出，不自动删除 |
+| `voice-pipeline/jobs/<job_id>/` | 协议快照、事件、失败诊断和临时推理请求 | 按下述规则自动清理 |
 
-在设置中可切换中文、English、日本語。普通界面文案受语言系统管理；`GPT-SoVITS`、框架名、路径、`A/B/C` 等专有名称或技术标识保持不变。
+jobs 自动清理规则：
 
-> 本仓库只维护源码运行方式，不再提供或维护 PyInstaller/EXE 打包流程。
+- 正在运行、意外中断或等待人工晋升的任务保留；
+- 失败任务只保留 48 小时以内、每个目标人最新的一份；
+- 晋升成功、推理完成、取消、过期失败和同一目标人的旧失败任务删除；
+- 损坏、路径越界或状态无法可靠判断的目录不猜测删除，Activity 会显示汇总提示；
+- Activity 只记录本次清理的汇总，不输出逐文件刷屏日志。
 
----
+`runs/<目标人>` 保留三份 A/B/C 推理候选，所以一个已晋升项目通常约占“三份候选模型 + 一份正式模型”。这是人工审判机制要求的正式产物，不是缓存泄漏。
 
-## 模型存储
+## 六、常见问题
 
-GUI 中的 `Model storage root` 是模型总目录，例如：
+### `ModuleNotFoundError: PySide6`
 
-```text
-D:\AI_Cache\VoiceDatasetBuilder
-```
-
-程序内部会使用：
-
-```text
-D:\AI_Cache\VoiceDatasetBuilder\huggingface
-D:\AI_Cache\VoiceDatasetBuilder\torch
-```
-
-其中：
-
-- Hugging Face：faster-whisper 模型
-- Torch：Demucs 模型
-
-第一次真正使用模型时才会下载。
-
-下载过程中如果网络中断，已有缓存会保留，重新 Retry 时不会主动删除已下载内容。
-
----
-
-# 使用 CLI
-
-CLI 入口：
+确认启动 AudioMiner 时使用的是 AudioMiner 环境，并安装了 GUI 依赖：
 
 ```powershell
-python build_dataset.py -h
+.\venv\Scripts\Activate.ps1
+uv pip install -r requirements-gui.txt
+python .\voice_dataset_builder.py
 ```
 
-## 本地音频
+### `voice-pipeline` 不是命令
+
+激活环境只会选择 Python，不会自动注册当前源码。执行一次：
 
 ```powershell
-python build_dataset.py input.m4a --speaker target --language ja
+uv pip install -e . --no-deps
 ```
 
-## YouTube
+也可以始终使用不依赖脚本注册的入口：
 
 ```powershell
-python build_dataset.py "https://www.youtube.com/watch?v=..." --speaker target --language ja
+python -m voice_pipeline --help
 ```
 
-## Bilibili
+### 训练模块连接失败
+
+分别检查训练代码目录、训练环境的 `python.exe`、模块入口 `voice_pipeline`，然后在训练模块目录执行：
 
 ```powershell
-python build_dataset.py "https://www.bilibili.com/video/BV..." --speaker target --language ja
+& 'D:\path\to\python.exe' -m voice_pipeline module describe --json
 ```
 
-## 已经是纯人声音频
+### 重启后找不到模型
 
-可跳过 Demucs：
+只有晋升成功且 `models/<目标人>/` 六个 bundle 文件完整的模型才进入历史列表。候选不会作为正式模型显示；推理 WAV 位于 `outputs/<目标人>/gui/`。
+
+### 磁盘占用增加
+
+优先检查共享模型缓存、`runs/` 的三份候选、正式 `models/` 和素材输出目录。`jobs/` 会自动清理，但状态不明目录会为了安全保留，并在 Activity 汇总中提示。
+
+## 开发验证
+
+仓库不再提供 PyInstaller/EXE 打包流程。源码测试建议使用已安装 pytest 与 PySide6 的开发环境：
 
 ```powershell
-python build_dataset.py vocals.wav --speaker target --language ja --skip-separation
+python -m pytest -q
 ```
-
-默认 ASR 模型：
-
-```text
-large-v3-turbo
-```
-
-调试时可改为：
-
-```powershell
---asr-model small
-```
-
----
-
-# 中断恢复与缓存
-
-工具会自动保留可复用阶段结果。
-
-任务失败或停止后，重新执行同一个 source 时，会尽量从最近可复用阶段继续，而不是从头处理。
-
-运行过程中可能保留：
-
-```text
-source audio
-separated vocals
-normalized audio
-ASR result
-state information
-```
-
-任务成功后会自动执行 compact 清理：
-
-保留：
-
-```text
-source audio
-ASR JSON
-state JSON
-final clips
-manifest.jsonl
-dataset.list
-```
-
-删除体积较大的临时中间文件，例如：
-
-```text
-separated vocals
-normalized full-length WAV
-```
-
-如需强制重新处理某个 source：
-
-```powershell
---fresh
-```
-
-调试时希望保留全部中间文件：
-
-```powershell
---keep-temp
-```
-
----
-
-# 输出结果
-
-默认会生成：
-
-```text
-clips/
-transcripts/
-manifest.jsonl
-dataset.list
-```
-
-## `clips/*.wav`
-
-最终用于训练的短语音片段。
-
-默认切片目标：
-
-```text
-推荐：4 ~ 8 秒
-硬限制：3 ~ 12 秒
-```
-
-## `manifest.jsonl`
-
-通用数据格式，例如：
-
-```json
-{"audio":"clips/sample_0001.wav","speaker":"target","language":"ja","text":"今日はいい天気ですね。","confidence":0.93}
-```
-
-## `dataset.list`
-
-GPT-SoVITS 格式：
-
-```text
-ABSOLUTE_WAV_PATH|target|ja|今日はいい天気ですね。
-```
-
----
-
-# GPU 与 CPU
-
-检测到 NVIDIA CUDA 时，程序会优先使用 GPU。
-
-推荐正式构建使用：
-
-```text
-large-v3-turbo
-```
-
-无 NVIDIA GPU 时可以使用 CPU 模式。
-
-如果 Demucs 显存不足，可使用：
-
-```powershell
---separator-device cpu
-```
-
-如果 ASR 需要使用 CPU：
-
-```powershell
---asr-device cpu
-```
-
----
-
-# 已知限制
-
-当前版本**不处理**：
-
-- 多说话人精确区分，请尽量保证视频/音频里只有一个主说话人
-- Bilibili 会员 / 登录限制内容的自动认证，请保证已有自己的账号
-- 自动读取浏览器 Cookie（安全第一）
-- LLM 文本纠错（复杂语句偶现识别错误）
-- 手工音频编辑 / 波形剪辑
-
-欢迎大家下载下来自己根据需求魔改，待开发玩法应该还是挺多的！
-e.g.可以仅提取音频，阶段缓存会保留的；或者拿来做乐器分轨提取......
----
