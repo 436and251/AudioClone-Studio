@@ -492,6 +492,63 @@ def test_promotion_unlocks_inference_and_audio_artifact_loads_result(tmp_path):
     page.close()
 
 
+def test_next_inference_recreates_job_removed_after_previous_completion(tmp_path):
+    from tts_builder.gui.training_page import TrainingPage
+
+    app = create_application([])
+    process = FakeModuleProcess()
+    setting, module = _binding(tmp_path)
+    model = setting.project_root / "models" / "Lucy"
+    model.mkdir(parents=True)
+    job = setting.project_root / "jobs" / "inference-Lucy" / "job.json"
+    ensured = []
+    requests = []
+
+    def ensure_job(*args):
+        ensured.append(args)
+        job.parent.mkdir(parents=True, exist_ok=True)
+        job.write_text("{}", encoding="utf-8")
+        return job
+
+    def build_request(job_path, *args):
+        if not job_path.is_file():
+            raise ValueError("invalid job JSON")
+        request = tmp_path / f"request-{len(requests) + 1}.json"
+        request.write_text("{}", encoding="utf-8")
+        requests.append(request)
+        return request
+
+    def cleanup(_root):
+        if job.is_file():
+            job.unlink()
+            job.parent.rmdir()
+            return CleanupSummary(removed=1)
+        return CleanupSummary()
+
+    page = TrainingPage(
+        ((setting, module),),
+        LocaleController("en"),
+        process_factory=lambda _setting: process,
+        ensure_inference_job=ensure_job,
+        build_inference_request=build_request,
+        cleanup=cleanup,
+    )
+    page.inference_page.set_model(model)
+    page.inference_page.text.setPlainText("first")
+    page.inference_page.start_button.click()
+    process.completed.emit(0)
+    app.processEvents()
+
+    assert not job.exists()
+
+    page.inference_page.text.setPlainText("second")
+    page.inference_page.start_button.click()
+
+    assert len(ensured) == 2
+    assert process.inferred == requests
+    page.close()
+
+
 def test_idle_form_identity_recovers_and_relocks_promoted_model(tmp_path):
     from tts_builder.gui.training_page import TrainingPage
 

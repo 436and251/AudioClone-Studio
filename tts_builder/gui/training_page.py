@@ -520,7 +520,7 @@ class TrainingPage(QWidget):
             setting, module, framework = self.form.selection()
             if setting is None:
                 raise ValueError(self.translator.text("training.module_unavailable"))
-            if self.job_path is None:
+            if self.job_path is None or not self.job_path.is_file():
                 self.job_path = self._ensure_inference_job(
                     Path(setting.project_root).resolve(),
                     module.module_id,
