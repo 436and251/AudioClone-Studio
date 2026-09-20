@@ -72,11 +72,10 @@ Set-ExecutionPolicy -Scope Process Bypass
 python .\voice_dataset_builder.py
 ```
 
-不要执行 `.venv/Scripts/` 或 `venv/Scripts/`：目录不是命令。当前仓库默认环境目录名是 `venv`，激活命令必须使用 Windows 反斜杠路径。
-
 ## 二、只使用AudioMiner功能
 
 GUI 示例：
+
 依次填写素材、输出目录、说话人、语言和 ASR 模型，然后开始处理。GUI 当前始终执行 Demucs；已经是干净人声、需要跳过分离时，请使用下方 CLI 的 `--skip-separation`。
 ![GUI](assets/gui_example1.png)
 
