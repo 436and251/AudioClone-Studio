@@ -75,7 +75,7 @@ def test_empty_configuration_skips_probe_and_keeps_standalone_window(tmp_path):
 
     assert modules == ()
     assert type(window) is MainWindow
-    assert window.windowTitle() == "Voice Dataset Builder"
+    assert window.windowTitle() == "AudioMiner"
     app.processEvents()
     window.close()
 

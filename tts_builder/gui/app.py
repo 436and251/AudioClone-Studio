@@ -25,7 +25,7 @@ def resource_path(relative_path: str) -> Path:
 def create_application(argv=None) -> QApplication:
     app = QApplication.instance() or QApplication(argv or sys.argv)
 
-    app.setApplicationName("Voice Dataset Builder")
+    app.setApplicationName("AudioMiner")
     app.setStyleSheet(APP_QSS)
     install_wheel_guard(app)
 

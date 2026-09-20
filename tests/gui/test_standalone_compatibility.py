@@ -24,7 +24,7 @@ def test_empty_module_configuration_keeps_original_single_page_window(tmp_path):
         )
     )
 
-    assert window.windowTitle() == 'Voice Dataset Builder'
+    assert window.windowTitle() == 'AudioMiner'
     assert window.findChild(QStackedWidget) is None
     assert window.start.isEnabled()
     window.start.click()

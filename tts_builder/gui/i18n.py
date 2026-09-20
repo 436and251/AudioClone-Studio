@@ -5,7 +5,7 @@ from PySide6.QtCore import QObject, Signal
 
 CATALOGS = {
     "en": {
-        "app.title": "Voice Dataset Builder",
+        "app.title": "AudioMiner",
         "main.subtitle": "Turn media into a clean GPT-SoVITS training dataset",
         "settings.title": "Settings",
         "settings.tooltip": "Settings",
