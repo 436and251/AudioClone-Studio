@@ -72,6 +72,35 @@ Set-ExecutionPolicy -Scope Process Bypass
 python .\voice_dataset_builder.py
 ```
 
+### 5. 首次启动与模型配置
+
+第一次启动会先打开环境检查窗口，显示 NVIDIA/CUDA 加速、内存、FFmpeg 状态以及模型目录的剩余空间。此时只检查本机环境，**不会立即下载模型**。
+
+在这个窗口中先选择一个长期使用、空间充足的“模型存储”目录，例如：
+
+```text
+D:\AI-cache\AudioCloneStudio\models
+```
+
+程序会在其下分别使用：
+
+```text
+D:\AI-cache\AudioCloneStudio\models\huggingface   # faster-whisper / Hugging Face
+D:\AI-cache\AudioCloneStudio\models\torch         # Demucs / Torch Hub
+```
+
+点击“继续”后配置会保存。进入主界面后仍可通过右上角齿轮修改：
+
+- 模型存储目录；
+- 默认输出目录；
+- 默认 ASR 模型；
+- 界面语言；
+- 可选的外部训练模块。
+
+更改模型存储目录只会修改后续使用的位置，**不会自动移动旧目录中已经下载的模型**。
+
+第一次真正开始素材处理时，如果所选 Whisper 模型尚未安装，GUI 会显示模型大小、存储位置和“下载并继续”确认框；Demucs 模型也会在人声分离阶段按需准备。下载中断后已完成的缓存会保留，重新执行任务即可继续，不需要手工删除缓存。
+
 ## 二、只使用AudioMiner功能
 
 GUI 示例：
