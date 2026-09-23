@@ -57,7 +57,11 @@ uv venv --python 3.12 venv
 .\venv\Scripts\Activate.ps1
 uv pip install -r requirements.txt
 uv pip install -r requirements-gui.txt
+uv pip install -r requirements-audio2score.txt
+uv pip install --no-deps basic-pitch==0.4.0
 ```
+
+Audio2Score 与人声素材挖掘共用上面的 Python 3.12 `venv`，不需要维护第二套 Python。Basic Pitch 的官方依赖声明会在 Python 3.12 上回溯到旧版 NumPy，因此先安装仓库中验证过的现代依赖，再用 `--no-deps` 安装 Basic Pitch 0.4.0；实际转录固定使用 ONNX Runtime。
 
 如果 PowerShell 禁止执行激活脚本，可在当前窗口临时允许：
 
