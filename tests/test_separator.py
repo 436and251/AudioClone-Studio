@@ -12,3 +12,10 @@ def test_demucs_command_writes_only_lossless_vocal_stem():
     assert command[command.index("--other-method") + 1] == "none"
     assert "--flac" in command
     assert "-d" not in command
+
+
+def test_vocal_wrapper_keeps_original_arguments(tmp_path):
+    args = build_demucs_command(Path("input.m4a"), tmp_path, "htdemucs", "auto", 7)
+    assert "--two-stems=vocals" in args
+    assert args[args.index("--other-method") + 1] == "none"
+    assert "--flac" in args

@@ -4,21 +4,15 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from .demucs_runner import run_demucs
+from .demucs_runner import build_demucs_args, run_demucs
 from .events import CancellationToken, EventSink
 
 
 def build_demucs_command(input_path: Path, output_root: Path, model: str = "htdemucs",
                          device: str = "auto", segment_seconds: float = 7.0) -> list[str]:
-    command = [
-        sys.executable, "-m", "demucs", "-n", model, "--two-stems=vocals",
-        "--other-method", "none", "--flac", "--segment", str(int(segment_seconds)),
-        "-o", str(output_root),
-    ]
-    if device != "auto":
-        command.extend(["-d", device])
-    command.append(str(input_path))
-    return command
+    return [sys.executable, "-m", "demucs", *build_demucs_args(
+        input_path, output_root, model, device, segment_seconds
+    )]
 
 
 def separate_vocals(input_path: Path, output_root: Path, model: str = "htdemucs",
