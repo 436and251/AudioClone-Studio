@@ -39,6 +39,9 @@ def install_pipeline_stubs(monkeypatch, tmp_path, fail_separate_once=False,
         formal_model = raw / "htdemucs_6s"
         evidence.mkdir(parents=True, exist_ok=True)
         formal_model.mkdir(parents=True, exist_ok=True)
+        sf.write(
+            evidence / "bass.flac", np.zeros((100, 2), np.float32), 44100
+        )
         project.stems.mkdir(parents=True, exist_ok=True)
         stems = {}
         for name in EXPECTED_STEMS:

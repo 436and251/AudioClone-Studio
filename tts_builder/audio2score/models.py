@@ -24,3 +24,5 @@ class Audio2ScoreSummary:
     project_dir: Path
     manifest_path: Path
     stems: dict[str, Path]
+    timeline_path: Path | None = None
+    transcription_path: Path | None = None

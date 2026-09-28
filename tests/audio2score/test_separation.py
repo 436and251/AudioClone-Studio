@@ -9,7 +9,9 @@ from tts_builder.audio2score.separation import (
     StemValidationError,
     decode_analysis_mix,
     publish_six_stems,
+    separate_analysis,
 )
+from tts_builder.audio2score.config import Audio2ScoreConfig
 
 
 def make_synthetic_stems(root, names=EXPECTED_STEMS):
@@ -71,3 +73,33 @@ def test_non_stereo_timeline_is_rejected_before_publication(tmp_path):
     with pytest.raises(StemValidationError, match="channels"):
         publish_six_stems(source, destination)
     assert not destination.exists()
+
+
+def test_score_separation_uses_distinct_full_stem_models_on_one_mix(
+    tmp_path, monkeypatch
+):
+    calls = []
+    project = Audio2ScoreConfig(tmp_path, "Song").project()
+    mix = tmp_path / "mix.wav"
+
+    def run(mixture, output, model, device, segment, sink, token, *, two_stems):
+        calls.append((mixture, output, model, two_stems))
+
+    monkeypatch.setattr("tts_builder.audio2score.separation.run_demucs", run)
+    monkeypatch.setattr(
+        "tts_builder.audio2score.separation._model_output",
+        lambda root, model: root / model / "song",
+    )
+    monkeypatch.setattr(
+        "tts_builder.audio2score.separation.publish_six_stems",
+        lambda source, destination: {"bass": destination / "bass.wav"},
+    )
+
+    result = separate_analysis(mix, project, "cpu")
+
+    assert calls == [
+        (mix, project.work / "demucs", "htdemucs_ft", None),
+        (mix, project.work / "demucs", "htdemucs_6s", None),
+    ]
+    assert result.evidence_dir == project.work / "demucs" / "htdemucs_ft" / "song"
+    assert result.formal_model_dir == project.work / "demucs" / "htdemucs_6s" / "song"
