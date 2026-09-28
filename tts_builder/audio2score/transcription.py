@@ -65,9 +65,11 @@ class BasicPitchONNX:
 
 def _json_value(value):
     if isinstance(value, np.ndarray):
-        return value.tolist()
+        return _json_value(value.tolist())
     if isinstance(value, np.generic):
         return value.item()
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
     return value
 
 

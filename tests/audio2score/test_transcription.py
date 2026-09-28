@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +32,16 @@ def test_numpy_pitch_bend_is_json_safe():
         source="lead",
     )
     assert result["candidates"][0]["pitch_bend"] == [1, 2]
+
+
+def test_numpy_scalars_inside_pitch_bend_list_are_json_safe():
+    result = retain_note_candidates(
+        [[np.float32(0), np.float64(1), np.int64(69), np.float32(.8),
+          [np.int64(1), np.int64(-2)]]],
+        source="bass_ft",
+    )
+    assert result["candidates"][0]["pitch_bend"] == [1, -2]
+    json.dumps(result)
 
 
 def test_onnx_adapter_reuses_one_model_and_returns_real_candidate_evidence():
