@@ -26,6 +26,7 @@ from .styles import FAILED, MUTED
 
 class DatasetPage(QWidget):
     training_requested = Signal(str)
+    settings_changed = Signal(object)
 
     def __init__(self, settings: AppSettings, controller: TaskController, parent=None,
                  locale_controller: LocaleController | None = None,
@@ -305,3 +306,4 @@ class DatasetPage(QWidget):
                 self.output.setText(str(self.settings.output_root))
             self.model.setCurrentText(self.settings.preferred_asr_model)
             self.locale_controller.set_locale(self.settings.locale)
+            self.settings_changed.emit(self.settings)

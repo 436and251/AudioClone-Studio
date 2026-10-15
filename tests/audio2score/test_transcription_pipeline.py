@@ -61,7 +61,7 @@ def test_transcription_uses_shared_preparation_not_stems_pipeline(
     )
 
     assert summary.transcription_path.is_file()
-    assert counters["separate"] == 2
+    assert counters == {"acquire": 1, "decode": 1, "separate": 1}
 
 
 def test_failed_guitar_route_resumes_without_repeating_completed_stages(
@@ -126,8 +126,7 @@ def test_failed_guitar_route_resumes_without_repeating_completed_stages(
     assert counters["separate"] == 1
     assert counters["timeline"] == 1
     assert counters["routes"] == {
-        "bass_ft": 1,
-        "bass_6s": 1,
+        "bass": 1,
         "guitar": 2,
         "piano": 1,
     }
@@ -135,12 +134,12 @@ def test_failed_guitar_route_resumes_without_repeating_completed_stages(
     progress = [event for event in events if event.kind == "stage_progress"
                 and event.stage == "transcribe"]
     assert [(event.current, event.total) for event in progress] == [
-        (1, 5), (2, 5), (3, 5), (4, 5), (5, 5)
+        (1, 4), (2, 4), (3, 4), (4, 4)
     ]
     timeline_report = json.loads(summary.timeline_path.read_text(encoding="utf-8"))
     transcription = json.loads(summary.transcription_path.read_text(encoding="utf-8"))
     assert timeline_report["primary_tempo"] == 120.0
-    assert set(transcription["routes"]) == {"bass_ft", "bass_6s", "guitar", "piano"}
+    assert set(transcription["routes"]) == {"bass", "guitar", "piano"}
     assert transcription["quantized"] is False
     assert transcription["musical_accuracy_verified"] is False
     assert not (summary.project_dir / ".work" / "mixture.wav").exists()

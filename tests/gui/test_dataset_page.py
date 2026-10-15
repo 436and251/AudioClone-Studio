@@ -6,7 +6,7 @@ import pytest
 
 pytest.importorskip('PySide6')
 
-from PySide6.QtWidgets import QScrollArea
+from PySide6.QtWidgets import QScrollArea, QTabWidget
 
 from tts_builder.gui.app import create_application
 from tts_builder.gui.main_window import MainWindow
@@ -23,8 +23,9 @@ def test_main_window_hosts_exactly_one_dataset_page(tmp_path):
         output_root=tmp_path / 'out',
     ))
 
-    assert isinstance(window.centralWidget(), QScrollArea)
-    assert window.centralWidget().widget() is window.dataset_page
+    assert isinstance(window.centralWidget(), QTabWidget)
+    assert isinstance(window.tabs.widget(0), QScrollArea)
+    assert window.tabs.widget(0).widget() is window.dataset_page
     assert window.findChildren(DatasetPage) == [window.dataset_page]
     app.processEvents()
     window.close()

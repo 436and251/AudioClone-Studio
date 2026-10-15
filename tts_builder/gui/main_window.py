@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QScrollArea
+from PySide6.QtWidgets import QApplication, QMainWindow, QScrollArea, QTabWidget
 
 from .controller import TaskController
+from .audio2score_page import Audio2ScorePage
 from .dataset_page import DatasetPage
 from .i18n import LocaleController, Translator
 from .settings import AppSettings
@@ -27,7 +28,15 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.dataset_page)
-        self.setCentralWidget(scroll)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(scroll, "")
+        self.audio2score_page = Audio2ScorePage(settings, self.dataset_page.locale_controller)
+        self.dataset_page.settings_changed.connect(lambda updated: setattr(self.audio2score_page, "settings", updated))
+        score_scroll = QScrollArea()
+        score_scroll.setWidgetResizable(True)
+        score_scroll.setWidget(self.audio2score_page)
+        self.tabs.addTab(score_scroll, "")
+        self.setCentralWidget(self.tabs)
         self._fit_to_screen()
         self.locale_controller.locale_changed.connect(self._locale_changed)
         self._locale_changed(self.locale_controller.locale)
@@ -51,7 +60,10 @@ class MainWindow(QMainWindow):
         return self.dataset_page.progress_model
 
     def _locale_changed(self, locale: str) -> None:
-        self.setWindowTitle(Translator(locale).text("app.title"))
+        translator = Translator(locale)
+        self.setWindowTitle(translator.text("app.title"))
+        self.tabs.setTabText(0, translator.text("audio2score.tab.dataset"))
+        self.tabs.setTabText(1, translator.text("audio2score.tab.score"))
 
     def _set_status(self, key: str, **values: object) -> None:
         self.dataset_page._set_status(key, **values)
@@ -62,3 +74,9 @@ class MainWindow(QMainWindow):
         width = min(860, max(640, int(available.width() * 0.95)), available.width())
         height = min(760, max(560, int(available.height() * 0.95)), available.height())
         self.resize(width, height)
+
+    def closeEvent(self, event) -> None:
+        if not self.audio2score_page.request_close(self.close):
+            event.ignore()
+            return
+        super().closeEvent(event)

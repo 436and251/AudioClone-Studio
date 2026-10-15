@@ -139,12 +139,15 @@ def test_available_module_uses_studio_with_two_localized_business_buttons(tmp_pa
         "Dataset Mining", "Training"
     ]
     assert window.pages.count() == 2
+    assert window.mining_tabs.count() == 2
+    assert window.mining_tabs.tabText(1) == "Audio2Score"
     window.locale_controller.set_locale("zh_CN")
     app.processEvents()
     assert window.navigation.workspace_label.text() == "工作区"
     assert [button.text() for button in window.navigation.buttons] == [
         "素材挖掘", "训练"
     ]
+    assert window.mining_tabs.tabText(0) == "人声训练数据"
     window.close()
 
 
@@ -207,8 +210,10 @@ def test_standalone_window_also_fits_small_screens_and_scrolls(tmp_path):
     assert window.width() <= available.width()
     assert window.height() <= available.height()
     scroll_areas = window.findChildren(QScrollArea)
-    assert len(scroll_areas) == 1
-    assert scroll_areas[0].widgetResizable() is True
+    assert len(scroll_areas) == 2
+    assert all(area.widgetResizable() for area in scroll_areas)
+    assert window.tabs.widget(0).widget() is window.dataset_page
+    assert window.tabs.widget(1).widget() is window.audio2score_page
     window.close()
 
 

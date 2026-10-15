@@ -11,12 +11,15 @@ from ..cache import source_identity
 from ..events import CancellationToken, EventSink, PipelineCancelled, PipelineEvent, emit
 from ..media import acquire_source
 from ..models import AcquiredSource
-from .cache import ScoreCache
+from ..gui.settings import AppSettings
+from .cache import ScoreCache, SourceMismatchError
 from .config import Audio2ScoreConfig
 from .drums import transcribe_drums
 from .models import Audio2ScoreProject, Audio2ScoreSummary
 from .runtime import require_audio2score_runtime
-from .separation import EXPECTED_STEMS, decode_analysis_mix, separate_analysis
+from .separation import (MODEL_FILES, EXPECTED_STEMS, OPTIONAL_STEMS,
+                         decode_analysis_mix, separate_analysis, separate_vocal_harmony,
+                         valid_stems)
 from .timeline import analyze_timeline
 from .transcription import BasicPitchONNX
 
@@ -24,15 +27,13 @@ from .transcription import BasicPitchONNX
 DECODE_VERSION = 1
 DECODE_PARAMETERS = {"sample_rate": 44100, "channels": 2, "codec": "pcm_f32le"}
 SEPARATION_PARAMETERS = {
-    "models": ["htdemucs_ft", "htdemucs_6s"],
-    "segment_seconds": 7,
-    "formal_model": "htdemucs_6s",
+    "formal_model": "bs-roformer-sw+dereverb",
+    "version": 3,
 }
 TIMELINE_PARAMETERS = {"version": 1, "source": "formal_drums"}
 DRUM_PARAMETERS = {"version": 1, "bands": ["low", "mid", "high"]}
 MELODIC_ROUTES = {
-    "bass_ft": ("bass", (28, 67)),
-    "bass_6s": ("bass", (28, 67)),
+    "bass": ("bass", (28, 67)),
     "guitar": ("guitar", (40, 88)),
     "piano": ("piano", (21, 108)),
 }
@@ -49,6 +50,7 @@ class _AudioContext:
     manifest_path: Path
     stems: dict[str, Path]
     mixture: Path
+    model_root: Path
 
 
 def _event(sink: EventSink | None, kind: str, stage: str | None = None,
@@ -88,24 +90,49 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _demucs_version() -> str:
-    try:
-        return importlib.metadata.version("demucs")
-    except importlib.metadata.PackageNotFoundError:
-        return "unknown"
-
-
 def _formal_stems(project_root: Path) -> dict[str, Path]:
-    return {name: project_root / "stems" / f"{name}.wav" for name in EXPECTED_STEMS}
+    return {name: project_root / "stems" / "base" / f"{name}.wav" for name in EXPECTED_STEMS}
 
 
-def _signatures(cache: ScoreCache, identity: dict, device: str) -> tuple[str, str, str]:
+def _available_stems(context: _AudioContext) -> dict[str, Path]:
+    stems = dict(context.stems)
+    manifest = _load_json(context.manifest_path)
+    optional = manifest.get("optional_vocal_stems", {})
+    if all(name in optional for name in OPTIONAL_STEMS):
+        paths = {
+            name: context.project.root / optional[name]["path"]
+            for name in OPTIONAL_STEMS
+        }
+        if valid_stems({**stems, **paths}):
+            stems.update(paths)
+    return stems
+
+
+def _model_assets_identity(model_root: Path, roles=("six_stem", "dereverb")) -> dict:
+    result = {}
+    for role in roles:
+        folder, checkpoint, config = MODEL_FILES[role]
+        files = []
+        for name in (checkpoint, config):
+            path = model_root / "bs-roformer" / folder / name
+            try:
+                stat = path.stat()
+                files.append((str(path), stat.st_size, stat.st_mtime_ns))
+            except FileNotFoundError:
+                files.append((str(path), "missing"))
+        result[role] = files
+    return result
+
+
+def _signatures(cache: ScoreCache, identity: dict, device: str,
+                model_root: Path) -> tuple[str, str, str]:
     source_sig = cache.signature({"source": identity})
     decode_sig = cache.signature({
         "parent": source_sig, "version": DECODE_VERSION, **DECODE_PARAMETERS,
     })
     separate_sig = cache.signature({
-        "parent": decode_sig, "device": device, **SEPARATION_PARAMETERS,
+        "parent": decode_sig, "device": device,
+        "model_assets": _model_assets_identity(model_root), **SEPARATION_PARAMETERS,
     })
     return source_sig, decode_sig, separate_sig
 
@@ -115,7 +142,7 @@ def _formal_hit(cache: ScoreCache, signature: str, manifest: Path,
     return (
         cache.stage_hit("separate", signature)
         and manifest.is_file()
-        and all(path.is_file() for path in stems.values())
+        and valid_stems(stems)
     )
 
 
@@ -147,6 +174,7 @@ def _cleanup(project, sink: EventSink | None) -> None:
         project.work / "mixture.wav",
         project.work / "demucs",
         project.work / "separation",
+        project.work / "harmony",
         project.work / "transcription",
     ):
         if not path.exists():
@@ -159,14 +187,23 @@ def _cleanup(project, sink: EventSink | None) -> None:
     _event(sink, "cleanup_completed", "cleanup", ", ".join(removed))
 
 
-def _context(source: str, config: Audio2ScoreConfig) -> _AudioContext:
+def _context(source: str, config: Audio2ScoreConfig,
+             use_bound_identity: bool = False) -> _AudioContext:
     project = config.project()
     cache = ScoreCache(project, source, fresh=config.fresh)
-    identity = source_identity(source)
-    cache.bind_source(identity)
-    source_sig, decode_sig, separate_sig = _signatures(
-        cache, identity, config.device
-    )
+    provided = source_identity(source)
+    if use_bound_identity:
+        identity = cache.state.get("source")
+        if not identity:
+            raise FileNotFoundError(f"six-stem project state missing: {cache.state_path}")
+        if any(provided.get(key) != identity.get(key)
+               for key in ("kind", "path", "url", "bvid")):
+            raise SourceMismatchError("project is already bound to a different source")
+    else:
+        identity = provided
+        cache.bind_source(identity)
+    model_root = (config.model_root or AppSettings.load().model_root).expanduser().resolve()
+    source_sig, decode_sig, separate_sig = _signatures(cache, identity, config.device, model_root)
     return _AudioContext(
         project=project,
         cache=cache,
@@ -177,25 +214,20 @@ def _context(source: str, config: Audio2ScoreConfig) -> _AudioContext:
         manifest_path=project.root / "manifest.json",
         stems=_formal_stems(project.root),
         mixture=project.work / "mixture.wav",
+        model_root=model_root,
     )
 
 
 def _prepare_audio(source: str, config: Audio2ScoreConfig, context: _AudioContext,
-                   require_evidence: bool, event_sink: EventSink | None,
+                   require_mix: bool, event_sink: EventSink | None,
                    cancel_token: CancellationToken | None) -> Path | None:
     cache = context.cache
-    separation = cache.stage_data("separate")
-    evidence_value = separation.get("evidence_dir")
-    evidence_dir = cache.resolved_path(evidence_value) if evidence_value else None
-    evidence_ready = bool(
-        evidence_dir and evidence_dir.is_dir() and (evidence_dir / "bass.flac").is_file()
+    formal_ready = _formal_hit(
+        cache, context.separate_sig, context.manifest_path, context.stems
     )
-    if (
-        _formal_hit(cache, context.separate_sig, context.manifest_path, context.stems)
-        and (not require_evidence or (context.mixture.is_file() and evidence_ready))
-    ):
+    if formal_ready and (not require_mix or context.mixture.is_file()):
         _event(event_sink, "stage_cache_hit", "separate", "Formal stems")
-        return evidence_dir
+        return None
 
     acquired = _load_acquired(cache, context.source_sig)
     if acquired is None:
@@ -229,11 +261,15 @@ def _prepare_audio(source: str, config: Audio2ScoreConfig, context: _AudioContex
             path=cache.stored_path(context.mixture),
         )
 
+    if formal_ready:
+        _event(event_sink, "stage_cache_hit", "separate", "Formal stems")
+        return None
+
     result = _run_stage(
         cache, "separate", context.separate_sig,
         lambda: separate_analysis(
             context.mixture, context.project, config.device,
-            event_sink, cancel_token,
+            event_sink, cancel_token, model_root=context.model_root,
         ),
         sink=event_sink, token=cancel_token,
     )
@@ -242,28 +278,24 @@ def _prepare_audio(source: str, config: Audio2ScoreConfig, context: _AudioContex
         stems={
             name: cache.stored_path(path) for name, path in result.stems.items()
         },
-        evidence_dir=cache.stored_path(result.evidence_dir),
-        formal_model_dir=cache.stored_path(result.formal_model_dir),
     )
     manifest = {
         "status": "stems_ready",
         "source": context.identity,
-        "source_sha256": _sha256(Path(acquired.path)),
         "decode": {"version": DECODE_VERSION, **DECODE_PARAMETERS},
-        "demucs_version": _demucs_version(),
-        "models": SEPARATION_PARAMETERS["models"],
-        "formal_model": "htdemucs_6s",
+        "models": {role: MODEL_FILES[role] for role in ("six_stem", "dereverb")},
+        "formal_model": SEPARATION_PARAMETERS["formal_model"],
         "device": config.device,
         "stems": {
             name: {
                 "path": path.relative_to(context.project.root).as_posix(),
-                "sha256": _sha256(path),
             }
             for name, path in result.stems.items()
         },
+        "raw_vocals": ".work/vocals_raw.wav",
     }
     _atomic_json(context.manifest_path, manifest)
-    return result.evidence_dir
+    return None
 
 
 def process_to_stems(source: str, config: Audio2ScoreConfig,
@@ -279,7 +311,7 @@ def process_to_stems(source: str, config: Audio2ScoreConfig,
             _cleanup(context.project, event_sink)
         _event(event_sink, "pipeline_completed", message="Stems ready")
         return Audio2ScoreSummary(
-            context.project.root, context.manifest_path, context.stems
+            context.project.root, context.manifest_path, _available_stems(context)
         )
     except PipelineCancelled:
         _event(event_sink, "pipeline_cancelled", message="Completed stages preserved")
@@ -289,18 +321,72 @@ def process_to_stems(source: str, config: Audio2ScoreConfig,
         raise
 
 
+def process_to_vocal_harmony(source: str, config: Audio2ScoreConfig,
+                             event_sink: EventSink | None = None,
+                             cancel_token: CancellationToken | None = None) -> Audio2ScoreSummary:
+    if config.fresh:
+        raise ValueError("vocal harmony requires an existing six-stem project")
+    context = _context(source, config, use_bound_identity=True)
+    raw_vocals = context.project.work / "vocals_raw.wav"
+    if not _formal_hit(context.cache, context.separate_sig,
+                       context.manifest_path, context.stems):
+        raise FileNotFoundError(f"six formal stems missing: {context.project.stems}")
+    if not raw_vocals.is_file():
+        raise FileNotFoundError(f"raw vocals missing: {raw_vocals}")
+    optional = {
+        name: context.project.stems / "harmony" / f"{name}.wav"
+        for name in OPTIONAL_STEMS
+    }
+    signature = context.cache.signature({
+        "parent": context.separate_sig,
+        "raw_vocals_sha256": _sha256(raw_vocals),
+        "device": config.device,
+        "model_assets": _model_assets_identity(context.model_root, ("karaoke", "dereverb")),
+        "version": 1,
+    })
+    if not (context.cache.stage_hit("vocal_harmony", signature)
+            and valid_stems({**context.stems, **optional})):
+        result = _run_stage(
+            context.cache, "vocal_harmony", signature,
+            lambda: separate_vocal_harmony(
+                context.project, config.device, event_sink, cancel_token,
+                model_root=context.model_root,
+            ),
+            sink=event_sink, token=cancel_token,
+        )
+        manifest = _load_json(context.manifest_path)
+        manifest["optional_vocal_stems"] = {
+            name: {"path": path.relative_to(context.project.root).as_posix()}
+            for name, path in result.items()
+        }
+        _atomic_json(context.manifest_path, manifest)
+        context.cache.complete(
+            "vocal_harmony", signature,
+            stems={name: context.cache.stored_path(path) for name, path in result.items()},
+        )
+    if not config.keep_work:
+        _cleanup(context.project, event_sink)
+    return Audio2ScoreSummary(
+        context.project.root, context.manifest_path, {**context.stems, **optional}
+    )
+
+
 def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def process_to_transcription(source: str, config: Audio2ScoreConfig,
+def _transcribe(source: str, config: Audio2ScoreConfig,
                              event_sink: EventSink | None = None,
-                             cancel_token: CancellationToken | None = None
+                             cancel_token: CancellationToken | None = None,
+                             finish: bool = True
                              ) -> Audio2ScoreSummary:
     require_audio2score_runtime()
     _event(event_sink, "pipeline_started", message=source)
     try:
-        context = _context(source, config)
+        context = _context(source, config, use_bound_identity=(
+            not config.fresh and not Path(source).is_file()
+            and (config.project().work / "state.json").is_file()
+        ))
         cache = context.cache
         adapter = BasicPitchONNX()
         librosa_version = importlib.metadata.version("librosa")
@@ -323,17 +409,16 @@ def process_to_transcription(source: str, config: Audio2ScoreConfig,
                 event_sink, "stage_cache_hit", "transcribe",
                 "Transcription report",
             )
-            _event(event_sink, "pipeline_completed", message="Transcription ready")
+            if finish:
+                _event(event_sink, "pipeline_completed", message="Transcription ready")
             return Audio2ScoreSummary(
-                context.project.root, context.manifest_path, context.stems,
+                context.project.root, context.manifest_path, _available_stems(context),
                 timeline_path, transcription_path,
             )
 
-        evidence_dir = _prepare_audio(
-            source, config, context, True, event_sink, cancel_token
+        _prepare_audio(
+            source, config, context, False, event_sink, cancel_token
         )
-        if evidence_dir is None:
-            raise RuntimeError("separation evidence was not preserved")
 
         timeline_sig = cache.signature({
             "parent": context.separate_sig,
@@ -348,7 +433,10 @@ def process_to_transcription(source: str, config: Audio2ScoreConfig,
                 cache,
                 "timeline",
                 timeline_sig,
-                lambda: analyze_timeline(context.mixture, context.stems["drums"]),
+                lambda: analyze_timeline(
+                    context.mixture if context.mixture.is_file() else context.stems["drums"],
+                    context.stems["drums"],
+                ),
                 sink=event_sink,
                 token=cancel_token,
             )
@@ -357,8 +445,7 @@ def process_to_transcription(source: str, config: Audio2ScoreConfig,
 
         route_dir = context.project.work / "transcription"
         route_sources = {
-            "bass_ft": evidence_dir / "bass.flac",
-            "bass_6s": context.stems["bass"],
+            "bass": context.stems["bass"],
             "guitar": context.stems["guitar"],
             "piano": context.stems["piano"],
         }
@@ -396,7 +483,7 @@ def process_to_transcription(source: str, config: Audio2ScoreConfig,
                 _atomic_json(route_path, evidence)
                 cache.complete(stage, route_sig, path=cache.stored_path(route_path))
             routes[route] = evidence
-            _event(event_sink, "stage_progress", "transcribe", route, current, 5)
+            _event(event_sink, "stage_progress", "transcribe", route, current, 4)
 
         drum_source = context.stems["drums"]
         drum_hash = _sha256(drum_source)
@@ -423,7 +510,7 @@ def process_to_transcription(source: str, config: Audio2ScoreConfig,
             cache.complete(
                 "transcribe_drums", drum_sig, path=cache.stored_path(drum_path)
             )
-        _event(event_sink, "stage_progress", "transcribe", "drums", 5, 5)
+        _event(event_sink, "stage_progress", "transcribe", "drums", 4, 4)
 
         report = {
             "version": 1,
@@ -440,11 +527,12 @@ def process_to_transcription(source: str, config: Audio2ScoreConfig,
             transcription_sig,
             path=cache.stored_path(transcription_path),
         )
-        if not config.keep_work:
+        if finish and not config.keep_work:
             _cleanup(context.project, event_sink)
-        _event(event_sink, "pipeline_completed", message="Transcription ready")
+        if finish:
+            _event(event_sink, "pipeline_completed", message="Transcription ready")
         return Audio2ScoreSummary(
-            context.project.root, context.manifest_path, context.stems,
+            context.project.root, context.manifest_path, _available_stems(context),
             timeline_path, transcription_path,
         )
     except PipelineCancelled:
@@ -453,3 +541,30 @@ def process_to_transcription(source: str, config: Audio2ScoreConfig,
     except Exception as exc:
         _event(event_sink, "pipeline_failed", message=str(exc))
         raise
+
+
+def process_to_transcription(source: str, config: Audio2ScoreConfig,
+                             event_sink: EventSink | None = None,
+                             cancel_token: CancellationToken | None = None) -> Audio2ScoreSummary:
+    return _transcribe(source, config, event_sink, cancel_token)
+
+
+def process_to_score(source: str, config: Audio2ScoreConfig,
+                     event_sink: EventSink | None = None,
+                     cancel_token: CancellationToken | None = None) -> Audio2ScoreSummary:
+    from .score_pipeline import build_score_outputs
+    import importlib.util
+    missing = [name for name in ("guitarpro", "mido") if importlib.util.find_spec(name) is None]
+    if missing:
+        raise RuntimeError("Install requirements-audio2score.txt; missing " + ", ".join(missing))
+    from .exporters import find_musescore
+    if find_musescore(config.musescore) is None:
+        raise RuntimeError("MuseScore Studio not found. Set its executable path in Settings, --musescore or MUSESCORE_BIN.")
+
+    summary = _transcribe(source, config, event_sink, cancel_token, finish=False)
+    result = build_score_outputs(summary, config, event_sink, cancel_token)
+    if result.status == "completed" and not config.keep_work:
+        _cleanup(config.project(), event_sink)
+    _event(event_sink, "pipeline_completed" if result.status == "completed" else "pipeline_partial",
+           message=result.message or "Score draft ready")
+    return result

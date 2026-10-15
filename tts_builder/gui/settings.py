@@ -40,6 +40,7 @@ class AppSettings:
     preferred_asr_model: str = "large-v3-turbo"
     locale: str = "en"
     training_modules: tuple[TrainingModuleSetting, ...] = ()
+    musescore: Path | None = None
 
     @classmethod
     def load(cls, path: Path | None = None) -> "AppSettings":
@@ -55,6 +56,7 @@ class AppSettings:
                 preferred_asr_model=str(data.get("preferred_asr_model") or "large-v3-turbo"),
                 locale=data.get("locale") if data.get("locale") in {"zh_CN", "en", "ja"} else "en",
                 training_modules=_training_modules(data.get("training_modules")),
+                musescore=Path(data["musescore"]) if data.get("musescore") else None,
             )
         except (OSError, ValueError, TypeError):
             return cls()
@@ -65,6 +67,7 @@ class AppSettings:
         payload = asdict(self)
         payload["model_root"] = str(self.model_root)
         payload["output_root"] = str(self.output_root)
+        payload["musescore"] = str(self.musescore) if self.musescore else None
         payload["training_modules"] = [
             {
                 "name": module.name,

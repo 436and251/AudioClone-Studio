@@ -556,6 +556,101 @@ CATALOGS = {
 }
 
 
+CATALOGS["en"].update({
+    "audio2score.tab.dataset": "Voice Dataset",
+    "audio2score.tab.score": "Audio2Score",
+    "audio2score.title": "Audio2Score · Instrument Stems",
+    "audio2score.source": "Media source",
+    "audio2score.project": "Project name",
+    "audio2score.project_hint": "Name this song",
+    "audio2score.start": "Separate six stems",
+    "audio2score.stop": "Stop",
+    "audio2score.play": "Play mix",
+    "audio2score.pause": "Stop playback",
+    "audio2score.solo": "Solo",
+    "audio2score.mute": "Mute",
+    "audio2score.harmony": "Separate backing vocals (optional)",
+    "audio2score.ready": "Stems are ready at the path shown below.",
+    "audio2score.score_hint": "Create an editable score draft from these stems. Uncertain notes are listed in the quality report. MuseScore Studio is required for PDF/MSCZ.",
+    "audio2score.meter": "Meter",
+    "audio2score.tempo": "BPM",
+    "audio2score.auto": "Automatic",
+    "audio2score.score_start": "Generate score + MIDI",
+    "audio2score.invalid_tempo": "Enter a BPM between 20 and 400, or leave it blank for automatic detection.",
+    "audio2score.musescore_path": "MuseScore executable (Audio2Score, optional)",
+    "audio2score.musescore_invalid": "Select an existing MuseScore executable, or leave it blank for automatic discovery.",
+    "audio2score.score_ready": "Score draft saved in score/. See reports/quality-report.json for review notes.",
+    "audio2score.score_partial": "Some outputs need attention. Check the meter setting and reports/quality-report.json. Available files are retained.",
+})
+CATALOGS["zh_CN"].update({
+    "audio2score.tab.dataset": "人声训练数据",
+    "audio2score.tab.score": "Audio2Score",
+    "audio2score.title": "Audio2Score · 乐器分轨",
+    "audio2score.source": "音视频来源",
+    "audio2score.project": "项目名称",
+    "audio2score.project_hint": "为歌曲命名",
+    "audio2score.start": "生成六轨",
+    "audio2score.stop": "停止",
+    "audio2score.play": "播放混音",
+    "audio2score.pause": "停止播放",
+    "audio2score.solo": "独奏",
+    "audio2score.mute": "静音",
+    "audio2score.harmony": "分离和声（可选）",
+    "audio2score.ready": "分轨已完成，文件位于下方目录。",
+    "audio2score.score_hint": "使用这些分轨生成可编辑谱面初稿；不确定的音符会记入质量报告。PDF/MSCZ 需要本机安装 MuseScore Studio。",
+    "audio2score.meter": "拍号",
+    "audio2score.tempo": "BPM",
+    "audio2score.auto": "自动",
+    "audio2score.score_start": "生成谱面与 MIDI",
+    "audio2score.invalid_tempo": "请输入 20～400 的 BPM，或留空使用自动检测。",
+    "audio2score.musescore_path": "MuseScore 程序（Audio2Score，可选）",
+    "audio2score.musescore_invalid": "请选择存在的 MuseScore 程序文件，或留空自动检测。",
+    "audio2score.score_ready": "谱面初稿已保存到 score/，待校对问题见 reports/quality-report.json。",
+    "audio2score.score_partial": "部分输出尚未完成。请检查拍号和 reports/quality-report.json；已生成文件会保留。",
+})
+CATALOGS["ja"].update({
+    "audio2score.tab.dataset": "音声データセット",
+    "audio2score.tab.score": "Audio2Score",
+    "audio2score.title": "Audio2Score · 楽器ステム分離",
+    "audio2score.source": "音声・動画ソース",
+    "audio2score.project": "プロジェクト名",
+    "audio2score.project_hint": "曲名を入力",
+    "audio2score.start": "6ステムを分離",
+    "audio2score.stop": "停止",
+    "audio2score.play": "ミックスを再生",
+    "audio2score.pause": "再生を停止",
+    "audio2score.solo": "ソロ",
+    "audio2score.mute": "ミュート",
+    "audio2score.harmony": "コーラスを分離（任意）",
+    "audio2score.ready": "ステムを下記フォルダーに保存しました。",
+    "audio2score.score_hint": "ステムから編集可能な楽譜の下書きを生成します。不確かな音符は品質レポートに記録します。PDF/MSCZ には MuseScore Studio が必要です。",
+    "audio2score.meter": "拍子",
+    "audio2score.tempo": "BPM",
+    "audio2score.auto": "自動",
+    "audio2score.score_start": "楽譜と MIDI を生成",
+    "audio2score.invalid_tempo": "BPM は 20～400 で入力してください。空欄の場合は自動検出します。",
+    "audio2score.musescore_path": "MuseScore 実行ファイル（Audio2Score、任意）",
+    "audio2score.musescore_invalid": "MuseScore 実行ファイルを選択してください。空欄の場合は自動検出します。",
+    "audio2score.score_ready": "下書きを score/ に保存しました。要確認箇所は reports/quality-report.json を参照してください。",
+    "audio2score.score_partial": "一部の出力が未完了です。拍子と reports/quality-report.json を確認してください。生成済みファイルは保持されます。",
+})
+
+
+for locale, stems, stages, cancelled in (
+    ("en", ("Drums", "Bass", "Other", "Guitar", "Piano", "Dry vocals", "Dry lead vocals", "Backing vocals"),
+     ("Acquiring media", "Decoding audio", "Separating stems", "Analyzing beats", "Transcribing bass", "Transcribing guitar", "Transcribing piano", "Analyzing drums", "Building score draft", "Separating backing vocals"), "Task cancelled; completed files are retained."),
+    ("zh_CN", ("鼓", "贝斯", "其他", "吉他", "钢琴", "人声（干声）", "主唱（干声）", "和声"),
+     ("获取音源", "解码音频", "分离音轨", "分析节拍", "转录贝斯", "转录吉他", "转录钢琴", "分析鼓点", "生成谱面初稿", "分离和声"), "任务已取消，已完成的文件会保留。"),
+    ("ja", ("ドラム", "ベース", "その他", "ギター", "ピアノ", "ボーカル（ドライ）", "リードボーカル（ドライ）", "コーラス"),
+     ("音源を取得中", "音声をデコード中", "ステムを分離中", "拍を解析中", "ベースを採譜中", "ギターを採譜中", "ピアノを採譜中", "ドラムを解析中", "楽譜の下書きを生成中", "コーラスを分離中"), "中止しました。生成済みファイルは保持されます。"),
+):
+    CATALOGS[locale].update({"audio2score.stem." + name: label for name, label in zip(
+        ("drums", "bass", "other", "guitar", "piano", "vocals_dry", "lead_vocals_dry", "backing_vocals"), stems)})
+    CATALOGS[locale].update({"audio2score.stage." + name: label for name, label in zip(
+        ("source", "decode", "separate", "timeline", "transcribe_bass", "transcribe_guitar", "transcribe_piano", "transcribe_drums", "score", "vocal_harmony"), stages)})
+    CATALOGS[locale]["audio2score.cancelled"] = cancelled
+
+
 class Translator:
     def __init__(self, locale: str):
         if locale not in CATALOGS:

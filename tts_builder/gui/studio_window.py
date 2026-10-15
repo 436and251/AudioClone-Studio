@@ -6,12 +6,13 @@ from pathlib import Path
 
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
-    QApplication, QHBoxLayout, QMainWindow, QScrollArea, QStackedWidget, QWidget,
+    QApplication, QHBoxLayout, QMainWindow, QScrollArea, QStackedWidget, QTabWidget, QWidget,
 )
 
 from ..training_modules.models import ModuleDescriptor
 from ..training_modules.process import ModuleProcessController
 from .controller import TaskController
+from .audio2score_page import Audio2ScorePage
 from .dataset_page import DatasetPage
 from .i18n import LocaleController
 from .navigation import Navigation
@@ -40,6 +41,11 @@ class StudioWindow(QMainWindow):
             locale_controller=self.locale_controller,
             training_available=True,
         )
+        self.mining_tabs = QTabWidget()
+        self.mining_tabs.addTab(self._scroll(self.dataset_page), "")
+        self.audio2score_page = Audio2ScorePage(settings, self.locale_controller)
+        self.dataset_page.settings_changed.connect(lambda updated: setattr(self.audio2score_page, "settings", updated))
+        self.mining_tabs.addTab(self._scroll(self.audio2score_page), "")
         self.training_page = TrainingPage(
             self.bindings,
             self.locale_controller,
@@ -48,7 +54,7 @@ class StudioWindow(QMainWindow):
                 model_root=normalize_model_root(settings.model_root),
             ),
         )
-        self.pages.addWidget(self._scroll(self.dataset_page))
+        self.pages.addWidget(self.mining_tabs)
         self.pages.addWidget(self.training_page)
         self.navigation.selection_changed.connect(self.pages.setCurrentIndex)
         self.dataset_page.training_requested.connect(self._continue_training)
@@ -69,6 +75,10 @@ class StudioWindow(QMainWindow):
 
     def _locale_changed(self, locale: str) -> None:
         self.setWindowTitle("AudioClone Studio")
+        from .i18n import Translator
+        translator = Translator(locale)
+        self.mining_tabs.setTabText(0, translator.text("audio2score.tab.dataset"))
+        self.mining_tabs.setTabText(1, translator.text("audio2score.tab.score"))
 
     def _continue_training(self, dataset: str) -> None:
         self.training_page.prefill_dataset(Path(dataset))
@@ -86,6 +96,12 @@ class StudioWindow(QMainWindow):
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self.navigation.set_compact(self.width() < 900)
+
+    def closeEvent(self, event) -> None:
+        if not self.audio2score_page.request_close(self.close):
+            event.ignore()
+            return
+        super().closeEvent(event)
 
 
 def _module_bindings(settings: AppSettings, modules: Sequence[object]):

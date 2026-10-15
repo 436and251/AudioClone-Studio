@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -14,8 +14,6 @@ class Audio2ScoreProject:
 
 @dataclass(frozen=True)
 class SeparationResult:
-    evidence_dir: Path
-    formal_model_dir: Path
     stems: dict[str, Path]
 
 
@@ -26,3 +24,6 @@ class Audio2ScoreSummary:
     stems: dict[str, Path]
     timeline_path: Path | None = None
     transcription_path: Path | None = None
+    score_paths: dict[str, Path] = field(default_factory=dict)
+    status: str = "completed"
+    message: str = ""

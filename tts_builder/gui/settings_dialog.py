@@ -24,6 +24,7 @@ class SettingsDialog(QDialog):
         form = QFormLayout()
         self.model_root = QLineEdit(str(settings.model_root))
         self.output_root = QLineEdit(str(settings.output_root))
+        self.musescore = QLineEdit(str(settings.musescore) if settings.musescore else "")
         self.model = QComboBox()
         self.model.addItems(["large-v3-turbo", "small", "large-v3"])
         self.model.setCurrentText(settings.preferred_asr_model)
@@ -38,6 +39,8 @@ class SettingsDialog(QDialog):
         form.addRow("", self.move_hint)
         self.output_root_label = QLabel()
         form.addRow(self.output_root_label, self._path_row(self.output_root))
+        self.musescore_label = QLabel()
+        form.addRow(self.musescore_label, self._path_row(self.musescore))
         self.asr_model_label = QLabel()
         form.addRow(self.asr_model_label, self.model)
         self.locale = QComboBox()
@@ -100,6 +103,8 @@ class SettingsDialog(QDialog):
         self.model_root_label.setText(translator.text("settings.model_root"))
         self.move_hint.setText(translator.text("settings.model_move_hint"))
         self.output_root_label.setText(translator.text("settings.output_root"))
+        self.musescore_label.setText(translator.text("audio2score.musescore_path"))
+        self.musescore.setPlaceholderText(translator.text("audio2score.auto"))
         self.asr_model_label.setText(translator.text("settings.asr_model"))
         self.locale_label.setText(translator.text("settings.language"))
         self.model_status_label.setText(translator.text("settings.model_status"))
@@ -115,7 +120,10 @@ class SettingsDialog(QDialog):
         self._update_model_paths_hint()
 
     def _browse(self, edit: QLineEdit) -> None:
-        chosen = QFileDialog.getExistingDirectory(self, self.translator.text("settings.choose_folder"), edit.text())
+        if edit is self.musescore:
+            chosen, _ = QFileDialog.getOpenFileName(self, "MuseScore", edit.text())
+        else:
+            chosen = QFileDialog.getExistingDirectory(self, self.translator.text("settings.choose_folder"), edit.text())
         if chosen:
             chosen_path = Path(chosen)
             if edit is self.model_root:
@@ -138,6 +146,8 @@ class SettingsDialog(QDialog):
         output_root = Path(self.output_root.text()).expanduser()
         if not self.output_root.text().strip() or not output_root.is_absolute():
             return self.translator.text("settings.output_root_required")
+        if self.musescore.text().strip() and not Path(self.musescore.text().strip()).expanduser().is_file():
+            return self.translator.text("audio2score.musescore_invalid")
         return self.module_settings.validation_error()
 
     def _update_ready(self, *_) -> None:
@@ -161,4 +171,5 @@ class SettingsDialog(QDialog):
             preferred_asr_model=self.model.currentText(),
             locale=self.locale.currentData(),
             training_modules=self.module_settings.modules(),
+            musescore=Path(self.musescore.text().strip()).expanduser() if self.musescore.text().strip() else None,
         )

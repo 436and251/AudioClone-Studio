@@ -6,14 +6,14 @@ import pytest
 
 pytest.importorskip('PySide6')
 
-from PySide6.QtWidgets import QStackedWidget
+from PySide6.QtWidgets import QTabWidget
 
 from tts_builder.gui.app import create_application
 from tts_builder.gui.main_window import MainWindow
 from tts_builder.gui.settings import AppSettings
 
 
-def test_empty_module_configuration_keeps_original_single_page_window(tmp_path):
+def test_empty_module_configuration_keeps_dataset_controls_without_training(tmp_path):
     app = create_application([])
     window = MainWindow(
         AppSettings(
@@ -25,7 +25,7 @@ def test_empty_module_configuration_keeps_original_single_page_window(tmp_path):
     )
 
     assert window.windowTitle() == 'AudioMiner'
-    assert window.findChild(QStackedWidget) is None
+    assert window.findChild(QTabWidget).count() == 2
     assert window.start.isEnabled()
     window.start.click()
     assert window.status.text() == "Choose a media source first."

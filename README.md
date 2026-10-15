@@ -1,10 +1,10 @@
 # AudioMiner / AudioClone Studio
 
-AudioMiner / AudioClone Studio 是本地语音素材挖掘工具：输入本地音视频、YouTube 或 Bilibili 链接，自动完成人声分离、音频标准化、语音识别、切片和训练清单导出。
+AudioMiner / AudioClone Studio 是本地音频处理工具：输入本地音视频、YouTube 或 Bilibili 链接，可完成人声分离、语音识别、切片与训练清单生成，也可通过内置 Audio2Score 进行乐器分轨和自动乐谱初稿制作。
 
 它有两种互不影响的使用方式：
 
-- **AudioMiner 独立模式**：只安装本仓库，生成 `clips/`、`manifest.jsonl` 和 GPT-SoVITS `dataset.list`。
+- **AudioMiner 独立模式**：只安装本仓库，可生成训练数据，或独立使用 Audio2Score 的分轨、MIDI 和乐谱功能。
 - **AudioClone Studio 完整模式**：额外连接独立的 `voice-pipeline`，在同一 GUI 中完成素材挖掘、预处理、S1/S2 训练、自动评测、A/B/C 试听、人工晋升和推理试验。
 
 未配置训练模块时，原有素材挖掘 GUI、CLI 和缓存逻辑不会依赖或启动 voice-pipeline。
@@ -63,6 +63,23 @@ uv pip install --no-deps basic-pitch==0.4.0
 
 Audio2Score 与人声素材挖掘共用上面的 Python 3.12 `venv`，不需要维护第二套 Python。Basic Pitch 的官方依赖声明会在 Python 3.12 上回溯到旧版 NumPy，因此先安装仓库中验证过的现代依赖，再用 `--no-deps` 安装 Basic Pitch 0.4.0；实际转录固定使用 ONNX Runtime。
 
+Audio2Score 的分轨使用 BS-RoFormer。NVIDIA 用户还需确认当前环境是 **CUDA 版** PyTorch；例如本机 CUDA 12.8 环境可执行 `uv pip install --torch-backend=cu128 'torch==2.7.0+cu128'`，随后用 `python -c "import torch; print(torch.cuda.is_available())"` 检查结果。自动设备模式不会静默退回 CPU；确需 CPU 推理时必须显式指定 `device="cpu"`，速度会很慢。CUDA 安装选型见 [uv 官方说明](https://docs.astral.sh/uv/guides/integration/pytorch/)及 [PyTorch 官方安装页](https://docs.pytorch.org/get-started/locally/)。
+
+分轨权重不进代码仓库，放在首次启动选择的模型存储目录下的 `bs-roformer/`：六轨、karaoke、去混响分别使用 `roformer-model-bs-roformer-sw-by-jarredou/`、`bs-roformer-karaoke-frazer-becruily/`、`roformer-model-bs-roformer-de-reverb/`。每个子目录须同时有对应的 `.ckpt` 和 `.yaml`；缺文件会明确报错，不会转而把权重下载到其他目录。默认六轨只需要六轨与去混响权重；karaoke 权重仅在主动开启和声分离时需要。吉他暂不细分。
+
+```text
+bs-roformer/
+├── roformer-model-bs-roformer-sw-by-jarredou/
+│   ├── BS-Rofo-SW-Fixed.ckpt
+│   └── BS-Rofo-SW-Fixed.yaml
+├── bs-roformer-karaoke-frazer-becruily/
+│   ├── bs_roformer_karaoke_frazer_becruily.ckpt
+│   └── config_karaoke_frazer_becruily.yaml
+└── roformer-model-bs-roformer-de-reverb/
+    ├── deverb_bs_roformer_8_384dim_10depth.ckpt
+    └── deverb_bs_roformer_8_384dim_10depth_config.yaml
+```
+
 如果 PowerShell 禁止执行激活脚本，可在当前窗口临时允许：
 
 ```powershell
@@ -75,6 +92,63 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```powershell
 python .\voice_dataset_builder.py
 ```
+
+素材挖掘下有“人声训练数据 / Audio2Score”两个子页签；即使没有安装任何训练模块，Audio2Score 也可独立使用。切换到 Audio2Score 后输入视频链接或本地音频、项目名称，点击“生成六轨”。输出直接保存在设置中的默认输出目录下的 `<项目名称>/stems/`；界面完成时会显示这个完整路径，不需要再导出或复制。
+
+默认六轨位于 `stems/base/`：`drums.wav`、`bass.wav`、`other.wav`、`guitar.wav`、`piano.wav` 和 `vocals_dry.wav`。六轨可在页面中同步试听并逐轨 solo/mute；这些操作只改变本地试听，不改 WAV 或后续转录。六轨完成后才出现默认关闭的“分离和声”选项。开启后只处理保留的人声，不重算乐器，追加 `stems/harmony/lead_vocals_dry.wav` 和 `stems/harmony/backing_vocals.wav`；原六轨仍保留。再次打开已有项目时会继续显示有效的和声轨；若基础六轨因模型或配置变更而重算，旧和声文件仍保留，但需重新处理才会作为本次结果显示。试听混音会用主唱加和声代替原混合人声，避免重复叠播。和声不参与后续出谱。
+
+项目的 `.work/vocals_raw.wav` 是为日后开启和声而保留的原始人声，四分钟约占 81 MiB，不是正式试听轨。GUI 不提供清理或导出按钮；需要删除产物时请自行到显示的项目目录管理。删除该原始人声缓存后无法直接进行和声后处理，需重新生成基础六轨。
+
+实测参考：RTX 4060 Laptop 8 GB 上，以已解码的四分钟歌曲计，六轨模型＋人声去混响＋正式轨发布耗时 174.37 秒；主动开启和声后，额外的 karaoke＋主唱去混响耗时 215.31 秒。音源获取和解码均不计入这两个数字；不同显卡、歌曲长度和运行状态会改变耗时。正式六轨及两条可选人声轨在该次穿刺中均为 240 秒、44.1 kHz 双声道 FLOAT WAV。
+
+### Audio2Score：生成 MIDI 和乐谱初稿
+
+六轨完成后，点击 Audio2Score 页面下方的“生成谱面与 MIDI”。拍号和 BPM 默认自动；若提示拍号证据不足，选定实际拍号后重试即可复用已完成的转录。BPM 可留空，仅在确知速度时填写。
+
+本阶段沿用 Basic Pitch 的贝斯/吉他/钢琴候选、librosa 节拍和鼓频带起音候选，**暂未接入 YourMT3**。输出是可编辑自动初稿；吉他乐句分工、鼓件、音符持续、量化和实际可演奏性仍需校对，不能将文件生成成功视为还原准确。原始候选保留，任何音域过滤、重叠缩短、鼓起音合并等处理都会记入质量报告。
+
+PDF 和 MSCZ 需要另外安装免费的 **MuseScore Studio**。默认从 PATH 和系统常见安装位置发现；找不到时，在设置中的“MuseScore 程序（Audio2Score，可选）”选择其可执行文件。也可设置 `MUSESCORE_BIN`。仅使用素材挖掘或六轨分离不需要 MuseScore。无需安装付费 Guitar Pro；GP5 由 PyGuitarPro 直接生成，使用 UTF-8 保存曲名和乐器名。
+
+```text
+<默认输出目录>/<项目名称>/
+├── stems/base/                  # 六条正式 WAV，保持不变
+├── score-events.json            # 统一谱面事件
+├── score/
+│   ├── <项目名称>_band.mid
+│   ├── <项目名称>_band.musicxml
+│   ├── <项目名称>_band.gp5
+│   ├── <项目名称>_band.mscz
+│   └── <项目名称>_band.pdf
+└── reports/
+    ├── transcription.mid        # 秒级原始候选试听，与编配后的 band.mid 不同
+    ├── timeline.json
+    ├── transcription.json
+    ├── quality-report.json      # 待校对的问题及处理记录
+    ├── playability.json         # 已检查/尚未覆盖的可演奏性范围
+    └── export-manifest.json     # 本次有效输出、哈希及部分失败信息
+```
+
+不支持的弦品组合等问题会保留候选 MIDI 和证据，并报告部分完成；不会删除音符来强行生成谱面。缺少拍号时也不会擅自按 4/4 填满全曲。失败后重试会复用已完成阶段；成功后清理临时分轨、解码和转换文件，正式结果与原始人声缓存仍保留。所有文件直接写到上述目录，无额外复制或导出步骤。
+
+CLI 与原有人声入口独立：
+
+```powershell
+# 按配置中的默认模型/输出目录完成分轨、转录和五格式制谱；例中拍号由用户明确指定
+python .\audio2score.py 'D:\music\song.mp3' --title 'Song' --time 4/4
+
+# 仅生成六轨
+python .\audio2score.py 'D:\music\song.mp3' --title 'Song' --stage stems
+
+# 独立转录候选，或给已完成六轨的项目追加和声
+python .\audio2score.py 'D:\music\song.mp3' --title 'Song' --stage transcription
+python .\audio2score.py 'D:\music\song.mp3' --title 'Song' --stage harmony
+
+python .\audio2score.py -h
+```
+
+可选参数包括 `--output`、`--model-root`、`--device`、`--tempo`、`--time`、`--musescore`、`--keep-work` 和 `--fresh`。`--fresh` 重建工作缓存，会重新计算；普通继续或更改拍号不需要它。CLI 部分完成时返回退出码 2，并指出可用文件和错误原因。
+
+谱面编译器复用参考项目 To-Sheet-Music-Skill 的 MIT 代码，许可和本地适配说明位于 `tts_builder/audio2score/_vendor/`。
 
 ### 5. 首次启动与模型配置
 
