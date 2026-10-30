@@ -22,6 +22,10 @@ EXPECTED_STEMS = (
 )
 OPTIONAL_STEMS = ("lead_vocals_dry", "backing_vocals")
 MODEL_FILES = {
+    "acoustic_guitar": (
+        "bs-roformer-mega-acoustic-guitar",
+        "bs_roformer_acoustic_guitar.ckpt", "bs_roformer_acoustic_guitar.yaml",
+    ),
     "six_stem": (
         "roformer-model-bs-roformer-sw-by-jarredou",
         "BS-Rofo-SW-Fixed.ckpt", "BS-Rofo-SW-Fixed.yaml",
@@ -38,6 +42,7 @@ MODEL_FILES = {
     ),
 }
 MODEL_OUTPUTS = {
+    "acoustic_guitar": ("acoustic-guitar", "instrumental"),
     "six_stem": ("bass", "drums", "other", "vocals", "guitar", "piano"),
     "karaoke": ("Vocals", "instrumental"),
     "dereverb": ("noreverb", "instrumental"),
@@ -119,14 +124,7 @@ def publish_stems(sources: dict[str, Path], destination: Path,
 
 
 def run_model(input_path: Path, output: Path, model: str, device: str,
-              model_root: Path, cancel_token: CancellationToken | None) -> dict[str, Path]:
-    if device == "auto":
-        import torch
-        if not torch.cuda.is_available():
-            raise RuntimeError(
-                "Audio2Score BS-RoFormer needs CUDA for automatic device selection; "
-                "install CUDA PyTorch or explicitly select CPU"
-            )
+              model_root: Path, cancel_token: CancellationToken | None, *, progress=None) -> dict[str, Path]:
     checkpoint_path, config_path = _model_assets(model_root, model)
     def stamp(path: Path) -> list[str | int]:
         stat = path.stat()
@@ -150,6 +148,8 @@ def run_model(input_path: Path, output: Path, model: str, device: str,
                 and info.format == "WAV" and info.subtype == "FLOAT"
                 for path in outputs.values()
             ):
+                if progress:
+                    progress(1, 1)
                 return outputs
         except (OSError, ValueError, RuntimeError):
             pass
@@ -160,35 +160,60 @@ def run_model(input_path: Path, output: Path, model: str, device: str,
     linked_input.hardlink_to(input_path)
     shutil.rmtree(result_dir, ignore_errors=True)
     result_dir.mkdir(parents=True, exist_ok=True)
-    if model == "karaoke":
+    if model in {"karaoke", "acoustic_guitar"}:
         corrected = re.sub(
             r"(?m)^(\s*chunk_size:\s*)882000(\s*)$", r"\g<1>881664\2",
             config_path.read_text(encoding="utf-8"), count=1,
         )
-        config_path = output / "karaoke-config.yaml"
+        config_path = output / f"{model}-config.yaml"
         config_path.write_text(corrected, encoding="utf-8")
     command = [
-        sys.executable, "-m", "bs_roformer.inference",
-        "--input_folder", str(input_dir), "--store_dir", str(result_dir),
-        "--model_path", str(checkpoint_path), "--config_path", str(config_path),
+        sys.executable, "-m", "tts_builder.audio2score.model_runner",
+        "--input_folder", str(input_dir.resolve()), "--store_dir", str(result_dir.resolve()),
+        "--model_path", str(checkpoint_path.resolve()), "--config_path", str(config_path.resolve()),
     ]
     if device != "auto":
         command.extend(("--device", device))
     log_path = output / "model.log"
+    pending = b""
+
+    def read_progress(reader):
+        nonlocal pending
+        pending += reader.read()
+        lines = pending.split(b"\n")
+        pending = lines.pop()[-16384:]
+        for line in lines:
+            marker = line.find(b"A2S_PROGRESS ")
+            if marker < 0 or progress is None:
+                continue
+            try:
+                row = json.loads(line[marker + len(b"A2S_PROGRESS "):])
+                current, total = row["current"], row["total"]
+                if type(current) is int and type(total) is int and 0 <= current <= total and total > 0:
+                    progress(current, total)
+            except (ValueError, KeyError, TypeError):
+                continue
+
     try:
-        with log_path.open("wb") as log:
+        with log_path.open("wb") as log, log_path.open("rb") as progress_reader:
             process = subprocess.Popen(
                 command, stdout=log, stderr=subprocess.STDOUT,
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                cwd=Path(__file__).resolve().parents[2],
+                env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"},
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             try:
                 while process.poll() is None:
+                    log.flush()
+                    read_progress(progress_reader)
                     if cancel_token:
                         cancel_token.raise_if_cancelled()
                     try:
                         process.wait(timeout=0.2)
                     except subprocess.TimeoutExpired:
                         pass
+                log.flush()
+                read_progress(progress_reader)
             except BaseException:
                 if process.poll() is None:
                     process.terminate()
@@ -212,6 +237,16 @@ def run_model(input_path: Path, output: Path, model: str, device: str,
     return outputs
 
 
+def _run_model_stage(input_path, output, model, device, model_root, token, stage, sink):
+    metadata = {"step": model}
+    emit(sink, PipelineEvent("stage_started", stage, metadata=metadata))
+    result = run_model(input_path, output, model, device, model_root, token,
+                       progress=lambda current, total: emit(sink, PipelineEvent(
+                           "stage_progress", stage, current=current, total=total, metadata=metadata)))
+    emit(sink, PipelineEvent("stage_completed", stage, metadata=metadata))
+    return result
+
+
 def separate_analysis(mix_path: Path, project: Audio2ScoreProject, device: str,
                       event_sink: EventSink | None = None,
                       cancel_token: CancellationToken | None = None,
@@ -220,20 +255,20 @@ def separate_analysis(mix_path: Path, project: Audio2ScoreProject, device: str,
     for role in ("six_stem", "dereverb"):
         _model_assets(model_root, role)
     work = project.work / "separation"
-    raw = run_model(mix_path, work / "six_stem", "six_stem", device, model_root, cancel_token)
-    emit(event_sink, PipelineEvent("stage_progress", "separate", "six_stem", 1, 2))
+    raw = _run_model_stage(mix_path, work / "six_stem", "six_stem", device,
+                           model_root, cancel_token, "separate", event_sink)
     raw_vocals = project.work / "vocals_raw.wav"
     raw_vocals.parent.mkdir(parents=True, exist_ok=True)
     raw_temp = raw_vocals.with_suffix(".wav.tmp")
     shutil.copyfile(raw["vocals"], raw_temp)
     raw_temp.replace(raw_vocals)
-    dry = run_model(
+    dry = _run_model_stage(
         raw_vocals, work / "dereverb", "dereverb",
-        device, model_root, cancel_token,
+        device, model_root, cancel_token, "separate", event_sink,
     )
-    emit(event_sink, PipelineEvent("stage_progress", "separate", "dereverb", 2, 2))
     sources = {name: raw[name] for name in ("drums", "bass", "other", "guitar", "piano")}
     sources["vocals_dry"] = dry["noreverb"]
+    emit(event_sink, PipelineEvent("stage_started", "separate", metadata={"step": "publish"}))
     stems = publish_stems(sources, project.stems / "base")
     return SeparationResult(stems)
 
@@ -254,13 +289,14 @@ def separate_vocal_harmony(project: Audio2ScoreProject, device: str,
     for role in ("karaoke", "dereverb"):
         _model_assets(model_root, role)
     work = project.work / "harmony"
-    split = run_model(raw_vocals, work / "karaoke", "karaoke", device, model_root, cancel_token)
-    emit(event_sink, PipelineEvent("stage_progress", "vocal_harmony", "karaoke", 1, 2))
-    dry = run_model(
-        split["Vocals"], work / "dereverb", "dereverb", device, model_root, cancel_token,
+    split = _run_model_stage(raw_vocals, work / "karaoke", "karaoke", device,
+                             model_root, cancel_token, "vocal_harmony", event_sink)
+    dry = _run_model_stage(
+        split["Vocals"], work / "dereverb", "dereverb", device, model_root,
+        cancel_token, "vocal_harmony", event_sink,
     )
-    emit(event_sink, PipelineEvent("stage_progress", "vocal_harmony", "dereverb", 2, 2))
     sources = {"lead_vocals_dry": dry["noreverb"], "backing_vocals": split["instrumental"]}
     if sf.info(sources["lead_vocals_dry"]).frames != raw_info.frames:
         raise StemValidationError("lead vocal has mismatched frames")
+    emit(event_sink, PipelineEvent("stage_started", "vocal_harmony", metadata={"step": "publish"}))
     return publish_stems(sources, project.stems / "harmony", OPTIONAL_STEMS)

@@ -23,6 +23,12 @@ def resource_path(relative_path: str) -> Path:
 
 
 def create_application(argv=None) -> QApplication:
+    if sys.platform == "win32" and QApplication.instance() is None:
+        from ctypes import OleDLL, c_wchar_p
+
+        set_app_id = OleDLL("shell32").SetCurrentProcessExplicitAppUserModelID
+        set_app_id.argtypes = [c_wchar_p]
+        set_app_id("AudioMiner.Desktop")
     app = QApplication.instance() or QApplication(argv or sys.argv)
 
     app.setApplicationName("AudioMiner")
@@ -96,6 +102,15 @@ def main(argv=None) -> int:
     if not icon.isNull():
         window.setWindowIcon(icon)
 
-    window.show()
+    if sys.platform == "win32":
+        from .windows_taskbar import set_window_taskbar_icon
 
-    return app.exec()
+        hwnd = int(window.winId())
+    try:
+        if sys.platform == "win32":
+            set_window_taskbar_icon(hwnd, icon_path)
+        window.show()
+        return app.exec()
+    finally:
+        if sys.platform == "win32":
+            set_window_taskbar_icon(hwnd, None)

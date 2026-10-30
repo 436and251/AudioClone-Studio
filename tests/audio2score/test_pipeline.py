@@ -9,6 +9,7 @@ from tts_builder.audio2score.models import SeparationResult
 from tts_builder.audio2score.pipeline import process_to_stems
 from tts_builder.audio2score.separation import EXPECTED_STEMS
 from tts_builder.models import AcquiredSource
+from dataclasses import replace
 
 
 def install_pipeline_stubs(monkeypatch, tmp_path, fail_separate_once=False,
@@ -68,6 +69,28 @@ def test_process_to_stems_publishes_manifest_and_six_tracks(tmp_path, monkeypatc
     assert all("sha256" not in item for item in manifest["stems"].values())
     assert "source_sha256" not in manifest
     assert (summary.project_dir / ".work" / "vocals_raw.wav").is_file()
+
+
+def test_changed_source_rebuilds_and_failed_attempt_never_publishes_old_results(tmp_path, monkeypatch):
+    from tts_builder.audio2score import pipeline
+    counters = install_pipeline_stubs(monkeypatch, tmp_path)
+    config = Audio2ScoreConfig(tmp_path, "Song")
+    first = process_to_stems("first.wav", config)
+    original = {name: path.read_bytes() for name, path in first.stems.items()}
+    separate = pipeline.separate_analysis
+
+    def interrupted(*args, **kwargs):
+        raise RuntimeError("replacement interrupted")
+
+    monkeypatch.setattr(pipeline, "separate_analysis", interrupted)
+    with pytest.raises(RuntimeError, match="replacement interrupted"):
+        process_to_stems("second.wav", replace(config, fresh=True))
+    assert not first.manifest_path.exists()
+    assert all(path.read_bytes() == original[name] for name, path in first.stems.items())
+    monkeypatch.setattr(pipeline, "separate_analysis", separate)
+    second = process_to_stems("second.wav", config)
+    assert json.loads(second.manifest_path.read_text())["source"]["path"].endswith("second.wav")
+    assert counters == {"acquire": 2, "decode": 2, "separate": 2}
 
 
 def test_interrupted_run_resumes_at_first_incomplete_stage(tmp_path, monkeypatch):

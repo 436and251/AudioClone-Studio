@@ -104,7 +104,7 @@ def test_score_separation_skips_karaoke_and_preserves_raw_vocals(
         (assets / checkpoint).write_bytes(b"checkpoint")
         (assets / config).write_text("config", encoding="utf-8")
 
-    def run(input_path, output, model, device, model_root, token):
+    def run(input_path, output, model, device, model_root, token, *, progress=None):
         calls.append((input_path, model))
         names = {
             "six_stem": ("vocals", "drums", "bass", "other", "guitar", "piano"),
@@ -149,7 +149,7 @@ def test_optional_harmony_uses_only_raw_vocals_and_preserves_base_stems(tmp_path
     original = {name: path.read_bytes() for name, path in base.items()}
     calls = []
 
-    def run(input_path, output, model, device, model_root, token):
+    def run(input_path, output, model, device, model_root, token, *, progress=None):
         calls.append((input_path, model))
         output.mkdir(parents=True, exist_ok=True)
         names = ("Vocals", "instrumental") if model == "karaoke" else ("noreverb", "instrumental")
@@ -170,14 +170,19 @@ def test_optional_harmony_uses_only_raw_vocals_and_preserves_base_stems(tmp_path
     assert all(path.read_bytes() == original[name] for name, path in base.items())
 
 
-def test_karaoke_runner_uses_configured_weights_and_aligned_chunks(tmp_path, monkeypatch):
+@pytest.mark.parametrize("role,names,config_text", [
+    ("karaoke", ("Vocals", "instrumental"), "audio:\n  chunk_size: 882000\n"),
+    ("acoustic_guitar", ("acoustic-guitar", "instrumental"),
+     "audio:\n  chunk_size: 441000\ninference:\n  chunk_size: 882000\n"),
+])
+def test_runner_uses_configured_weights_and_aligned_chunks(tmp_path, monkeypatch, role, names, config_text):
     from tts_builder.audio2score.separation import MODEL_FILES
 
-    folder, checkpoint, config = MODEL_FILES["karaoke"]
+    folder, checkpoint, config = MODEL_FILES[role]
     assets = tmp_path / "models" / "bs-roformer" / folder
     assets.mkdir(parents=True)
     (assets / checkpoint).write_bytes(b"checkpoint")
-    (assets / config).write_text("audio:\n  chunk_size: 882000\n", encoding="utf-8")
+    (assets / config).write_text(config_text, encoding="utf-8")
     vocal = tmp_path / "vocal.wav"
     sf.write(vocal, np.zeros((512, 2), np.float32), 44100, subtype="FLOAT")
     commands = []
@@ -194,14 +199,14 @@ def test_karaoke_runner_uses_configured_weights_and_aligned_chunks(tmp_path, mon
         assert "chunk_size: 881664" in config_path.read_text(encoding="utf-8")
         output = Path(command[command.index("--store_dir") + 1])
         output.mkdir(parents=True, exist_ok=True)
-        for name in ("Vocals", "instrumental"):
+        for name in names:
             sf.write(output / f"track_{name}.wav", np.zeros((512, 2), np.float32), 44100, subtype="FLOAT")
         return CompletedProcess()
 
     monkeypatch.setattr("tts_builder.audio2score.separation.subprocess.Popen", launch)
-    outputs = run_model(vocal, tmp_path / "work", "karaoke", "cuda:0", tmp_path / "models", None)
-    repeated = run_model(vocal, tmp_path / "work", "karaoke", "cuda:0", tmp_path / "models", None)
-    assert set(outputs) == {"Vocals", "instrumental"}
+    outputs = run_model(vocal, tmp_path / "work", role, "cuda:0", tmp_path / "models", None)
+    repeated = run_model(vocal, tmp_path / "work", role, "cuda:0", tmp_path / "models", None)
+    assert set(outputs) == set(names)
     assert repeated == outputs
     assert len(commands) == 1
     assert commands[0][commands[0].index("--model_path") + 1] == str(assets / checkpoint)
@@ -242,24 +247,19 @@ def test_failed_model_run_can_retry_without_stale_input_link(tmp_path, monkeypat
     assert not stale.exists()
 
 
-def test_auto_device_rejects_cpu_only_runtime_before_model_launch(tmp_path, monkeypatch):
-    from tts_builder.audio2score.separation import MODEL_FILES
-
-    folder, checkpoint, config = MODEL_FILES["six_stem"]
-    assets = tmp_path / "models" / "bs-roformer" / folder
-    assets.mkdir(parents=True)
-    (assets / checkpoint).write_bytes(b"checkpoint")
-    (assets / config).write_text("model: test\n", encoding="utf-8")
-    source = tmp_path / "source.wav"
-    sf.write(source, np.zeros((512, 2), np.float32), 44100, subtype="FLOAT")
+@pytest.mark.parametrize("device_args", [[], ["--device", "cuda:0"]])
+def test_model_child_rejects_cpu_only_runtime_before_model_load(monkeypatch, device_args):
+    from tts_builder.audio2score import model_runner
+    import sys
+    monkeypatch.setattr(sys, "argv", ["model_runner", *device_args])
     monkeypatch.setattr("torch.cuda.is_available", lambda: False)
     monkeypatch.setattr(
-        "tts_builder.audio2score.separation.subprocess.Popen",
-        lambda command, **kwargs: pytest.fail("CPU fallback launched"),
+        "bs_roformer.inference.main",
+        lambda: pytest.fail("CPU fallback launched"),
     )
 
     with pytest.raises(RuntimeError, match="CUDA"):
-        run_model(source, tmp_path / "work", "six_stem", "auto", tmp_path / "models", None)
+        model_runner.main()
 
 
 def test_model_failure_reports_error_without_streaming_progress_noise(tmp_path, monkeypatch):

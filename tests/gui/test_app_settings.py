@@ -12,6 +12,7 @@ def test_settings_round_trip(tmp_path: Path):
         first_run_completed=True,
         model_root=tmp_path / 'models',
         output_root=tmp_path / 'datasets',
+        audio2score_output_root=tmp_path / 'scores',
         preferred_asr_model='large-v3-turbo',
         locale='ja',
         training_modules=(
@@ -100,3 +101,23 @@ def test_default_output_change_does_not_override_task_specific_output(tmp_path: 
     current_task = tmp_path / 'speaker-acane'
     assert not should_update_current_output(current_task, old_default)
     assert should_update_current_output(old_default, old_default)
+
+
+def test_new_install_has_distinct_score_dataset_and_model_roots():
+    settings = AppSettings()
+    assert len({settings.audio2score_output_root, settings.output_root, settings.model_root}) == 3
+
+
+def test_legacy_output_is_preserved_as_independent_score_root(tmp_path):
+    import json
+    from dataclasses import replace
+    path = tmp_path / "config.json"
+    old_output = tmp_path / "existing-projects"
+    path.write_text(json.dumps({"output_root": str(old_output)}), encoding="utf-8")
+    settings = AppSettings.load(path)
+    assert settings.audio2score_output_root == old_output
+    replace(settings, output_root=tmp_path / "new-datasets").save(path)
+    loaded = AppSettings.load(path)
+    assert loaded.audio2score_output_root == old_output
+    assert loaded.output_root == tmp_path / "new-datasets"
+    assert not old_output.exists()  # Config migration never moves or creates projects.

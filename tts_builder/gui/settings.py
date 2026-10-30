@@ -24,6 +24,10 @@ def default_output_root() -> Path:
     return Path.home() / "VoiceDatasetBuilder" / "datasets"
 
 
+def default_audio2score_output_root() -> Path:
+    return Path.home() / "VoiceDatasetBuilder" / "audio2score"
+
+
 @dataclass(frozen=True)
 class TrainingModuleSetting:
     name: str
@@ -41,6 +45,7 @@ class AppSettings:
     locale: str = "en"
     training_modules: tuple[TrainingModuleSetting, ...] = ()
     musescore: Path | None = None
+    audio2score_output_root: Path = default_audio2score_output_root()
 
     @classmethod
     def load(cls, path: Path | None = None) -> "AppSettings":
@@ -53,6 +58,8 @@ class AppSettings:
                 first_run_completed=bool(data.get("first_run_completed", False)),
                 model_root=Path(data.get("model_root") or default_model_root()),
                 output_root=Path(data.get("output_root") or default_output_root()),
+                # Preserve legacy projects without moving files or coupling future edits.
+                audio2score_output_root=Path(data.get("audio2score_output_root") or data.get("output_root") or default_audio2score_output_root()),
                 preferred_asr_model=str(data.get("preferred_asr_model") or "large-v3-turbo"),
                 locale=data.get("locale") if data.get("locale") in {"zh_CN", "en", "ja"} else "en",
                 training_modules=_training_modules(data.get("training_modules")),
@@ -67,6 +74,7 @@ class AppSettings:
         payload = asdict(self)
         payload["model_root"] = str(self.model_root)
         payload["output_root"] = str(self.output_root)
+        payload["audio2score_output_root"] = str(self.audio2score_output_root)
         payload["musescore"] = str(self.musescore) if self.musescore else None
         payload["training_modules"] = [
             {

@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import pytest
@@ -232,27 +233,69 @@ def test_settings_action_applies_accepted_values_to_the_live_window(tmp_path, mo
     window.close()
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows shell identity")
-def test_source_gui_does_not_claim_an_unregistered_packaged_identity():
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows taskbar identity and native icon")
+@pytest.mark.parametrize("studio", [False, True])
+def test_windows_taskbar_identity_and_native_window_icon(tmp_path, studio):
     probe = """
-from ctypes import byref, c_wchar_p, windll
+from ctypes import byref, cast, c_uint, c_wchar_p, c_ssize_t, c_void_p, windll
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon, QImage, QPainter
 from tts_builder.gui.app import create_application
+from tts_builder.gui.main_window import MainWindow
+from tts_builder.gui.studio_window import StudioWindow
+from tts_builder.gui.settings import AppSettings
+from tts_builder.training_modules.models import FrameworkDescriptor, ModuleDescriptor, TrainingDataDescriptor
+from pathlib import Path
+import sys
 
-create_application([])
+app = create_application([])
 app_id = c_wchar_p()
 result = windll.shell32.GetCurrentProcessExplicitAppUserModelID(byref(app_id))
-print("NONE" if result else app_id.value)
+assert result == 0 and app_id.value == 'AudioMiner.Desktop', (result, app_id.value)
+windll.ole32.CoTaskMemFree(c_void_p(cast(app_id, c_void_p).value))
+root = Path(sys.argv[2])
+settings = AppSettings(output_root=root/'voices', audio2score_output_root=root/'scores', model_root=root/'models')
+framework = FrameworkDescriptor('v2ProPlus', 'GPT-SoVITS v2ProPlus', ('train',), TrainingDataDescriptor('file', ('.list',)), ())
+module = ModuleDescriptor(2, 'gpt-sovits', '1.0', (framework,))
+window = StudioWindow(settings, (module,)) if sys.argv[1] == 'True' else MainWindow(settings)
+window.setAttribute(Qt.WA_DontShowOnScreen)
+window.show()
+app.processEvents()
+send = windll.user32.SendMessageW
+send.argtypes = [c_void_p, c_uint, c_void_p, c_void_p]
+send.restype = c_ssize_t
+for kind in (0, 1):
+    handle = send(int(window.winId()), 0x7F, kind, 0)
+    assert handle, 'Native WM_GETICON missing'
+    actual = QImage.fromHICON(handle)
+    expected = QIcon(sys.argv[3]).pixmap(actual.size(), 1.0).toImage()
+    def on_black(source):
+        target = QImage(source.size(), QImage.Format_RGB32)
+        target.fill(Qt.black)
+        painter = QPainter(target)
+        painter.drawImage(0, 0, source)
+        painter.end()
+        return target
+    actual, expected = on_black(actual), on_black(expected)
+    assert actual.size() == expected.size()
+    # HICON premultiplied-alpha conversion can round a channel by one level.
+    assert all(abs(a-b) <= 1 for y in range(actual.height()) for x in range(actual.width())
+               for a,b in zip(actual.pixelColor(x,y).getRgb(), expected.pixelColor(x,y).getRgb())), 'Native icon differs from application asset'
+window.close()
+print('taskbar identity and native icons verified')
 """
 
+    env = {**os.environ, "QT_QPA_PLATFORM": "windows"}
     completed = subprocess.run(
-        [sys.executable, "-c", probe],
-        check=True,
+        [sys.executable, "-c", probe, str(studio), str(tmp_path), str(Path(__file__).resolve().parents[2] / 'assets' / 'app.ico')],
         capture_output=True,
         text=True,
-        env=os.environ.copy(),
+        env=env,
+        timeout=30,
     )
 
-    assert completed.stdout.strip().splitlines()[-1] == "NONE"
+    assert completed.returncode == 0, completed.stderr
+    assert 'taskbar identity and native icons verified' in completed.stdout
 
 
 def test_source_gui_uses_window_icon():

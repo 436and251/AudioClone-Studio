@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
@@ -29,3 +30,21 @@ def test_main_window_hosts_exactly_one_dataset_page(tmp_path):
     assert window.findChildren(DatasetPage) == [window.dataset_page]
     app.processEvents()
     window.close()
+
+
+def test_changed_source_clears_completed_status_without_removing_dataset(tmp_path):
+    from tts_builder.gui.dataset_page import DatasetPage
+    from tts_builder.gui.controller import TaskController
+
+    create_application([])
+    dataset = tmp_path / "dataset.list"
+    dataset.write_text("retained clips", encoding="utf-8")
+    page = DatasetPage(AppSettings(output_root=tmp_path), TaskController(), training_available=True)
+    page.source.set_value("first.wav")
+    page._completed(SimpleNamespace(accepted=2, rejected=0))
+    assert not page.continue_training.isHidden()
+    page.source.set_value("second.wav")
+    assert page.continue_training.isHidden()
+    assert "2 accepted" not in page.status.text()
+    assert dataset.read_text(encoding="utf-8") == "retained clips"
+    page.close()

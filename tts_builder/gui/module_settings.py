@@ -52,6 +52,7 @@ class ModuleSettings(QWidget):
         body.addWidget(self.module_list, 1)
 
         form = QFormLayout()
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self.name_edit = QLineEdit()
         self.project_edit = QLineEdit()
         self.python_edit = QLineEdit()

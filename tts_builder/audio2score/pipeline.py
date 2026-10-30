@@ -12,7 +12,7 @@ from ..events import CancellationToken, EventSink, PipelineCancelled, PipelineEv
 from ..media import acquire_source
 from ..models import AcquiredSource
 from ..gui.settings import AppSettings
-from .cache import ScoreCache, SourceMismatchError
+from .cache import ScoreCache, SourceMismatchError, same_source
 from .config import Audio2ScoreConfig
 from .drums import transcribe_drums
 from .models import Audio2ScoreProject, Audio2ScoreSummary
@@ -196,9 +196,8 @@ def _context(source: str, config: Audio2ScoreConfig,
         identity = cache.state.get("source")
         if not identity:
             raise FileNotFoundError(f"six-stem project state missing: {cache.state_path}")
-        if any(provided.get(key) != identity.get(key)
-               for key in ("kind", "path", "url", "bvid")):
-            raise SourceMismatchError("project is already bound to a different source")
+        if not same_source(identity, provided):
+            raise SourceMismatchError("source changed; rerun six-stem separation with --fresh first")
     else:
         identity = provided
         cache.bind_source(identity)

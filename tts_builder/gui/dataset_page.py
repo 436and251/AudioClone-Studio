@@ -40,6 +40,7 @@ class DatasetPage(QWidget):
         self._status_key = None
         self._status_values = {}
         self._start_mode = "build"
+        self._completed_source = None
         self.training_available = training_available
         self._build()
         self._wire()
@@ -139,6 +140,7 @@ class DatasetPage(QWidget):
 
     def _wire(self) -> None:
         self.source.source_changed.connect(self._validate)
+        self.source.source_changed.connect(self._source_changed)
         self.speaker.textChanged.connect(self._validate)
         self.controller.event_received.connect(self._event)
         self.controller.task_completed.connect(self._completed)
@@ -184,6 +186,16 @@ class DatasetPage(QWidget):
 
     def _validate(self, *_) -> None:
         self.start.setEnabled(not self.controller.running)
+
+    def _source_changed(self, *_):
+        if self._completed_source is not None and self.source.value() != self._completed_source:
+            self._completed_source = None
+            self.progress_model = ProgressModel()
+            self.progress.apply(self.progress_model)
+            self.continue_training.hide()
+            self._set_start_mode("build")
+            self.status.setStyleSheet(f"color:{MUTED}")
+            self._set_status("status.source_changed")
 
     def _validation_error(self) -> str | None:
         if not self.source.value():
@@ -246,6 +258,7 @@ class DatasetPage(QWidget):
         self._validate()
 
     def _completed(self, summary) -> None:
+        self._completed_source = self.source.value()
         self.status.setStyleSheet(f"color:{MUTED}")
         self._set_status("status.ready", accepted=summary.accepted, rejected=summary.rejected)
         self._set_start_mode("build")

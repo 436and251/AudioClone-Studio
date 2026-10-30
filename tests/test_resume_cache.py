@@ -110,3 +110,26 @@ def test_changed_speaker_reuses_asr_and_replaces_source_manifest(tmp_path, monke
     records = load_manifest(output / "manifest.jsonl")
     assert records
     assert {record.speaker for record in records} == {"new"}
+
+
+def test_different_sources_accumulate_in_one_dataset_with_isolated_caches(tmp_path, monkeypatch):
+    from tts_builder.sources.local import acquire_local
+    counters = {"acquire": 0, "separate": 0, "normalize": 0, "asr": 0}
+    _install_audio_stubs(monkeypatch, counters)
+    # Keep real source IDs: even equal file names in different directories must not collide.
+    monkeypatch.setattr("tts_builder.pipeline.acquire_source", lambda source, *_: acquire_local(source))
+    first, second = tmp_path / "one" / "song.wav", tmp_path / "two" / "song.wav"
+    for source in (first, second):
+        source.parent.mkdir()
+        sf.write(source, np.zeros(44100 * 10, np.float32), 44100)
+    cfg = BuildConfig(output=tmp_path / "dataset", speaker="suis", language="ja", skip_separation=True)
+    process_source(str(first), cfg)
+    first_records = load_manifest(cfg.output / "manifest.jsonl")
+    process_source(str(second), cfg)
+    combined = load_manifest(cfg.output / "manifest.jsonl")
+    assert len(combined) == 2 * len(first_records) > 0
+    assert all((cfg.output / row.audio).is_file() for row in combined)
+    process_source(str(first), cfg)
+    assert len(load_manifest(cfg.output / "manifest.jsonl")) == len(combined)
+    assert counters["asr"] == 2
+    assert len(list((cfg.output / ".cache").glob("*/state.json"))) == 2

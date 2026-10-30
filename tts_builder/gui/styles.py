@@ -131,7 +131,23 @@ QPushButton:hover { background: #343434; }
 QPushButton:disabled { color: #777777; background: #202020; }
 QPushButton#Primary { background: #1ED760; color: #06130A; border-radius: 20px; padding: 11px 22px; font-weight: 700; }
 QPushButton#Primary:hover { background: #25E46A; }
+QPushButton#Primary[busy="false"]:pressed { background: #74F59A; }
+QPushButton#Primary[busy="true"]:disabled { background: #39DF78; color: #06130A; }
 QPushButton#Danger { color: #FF8A8A; }
+QPushButton#StemSolo:checked {
+    background: #1ED760; color: #06130A;
+}
+QPushButton#StemMute:checked { background: #E4AB42; color: #171108; }
+QFrame#Audio2ScoreStem { background: #222222; border: none; border-radius: 10px; }
+QFrame#Audio2ScoreStem QPushButton { padding: 5px 10px; border-radius: 12px; }
+QToolButton#TrackToggle { color: #FFFFFF; font-size: 17px; padding: 4px 0; }
+QLineEdit#Audio2ScorePath { background: transparent; border: none; padding: 4px 8px; color: #B3B3B3; }
+QSlider#StemTimeline::groove:horizontal { background: #333333; height: 6px; border-radius: 3px; }
+QSlider#StemTimeline::sub-page:horizontal { background: #1ED760; border-radius: 3px; }
+QSlider#StemTimeline::handle:horizontal { background: #1ED760; width: 14px; margin: -4px 0; border-radius: 7px; }
+QLabel#ScoreStatus { color: #B3B3B3; }
+QLabel#ScoreStatus[state="success"] { color: #1ED760; }
+QLabel#ScoreStatus[state="warning"] { color: #E4AB42; }
 QProgressBar { background: #2A2A2A; border: none; border-radius: 8px; min-height: 18px; text-align: center; color: #FFFFFF; }
 QProgressBar::chunk { background: #1ED760; border-radius: 3px; }
 QPlainTextEdit { background: #101010; border: 1px solid #282828; border-radius: 10px; color: #B3B3B3; padding: 8px; }
